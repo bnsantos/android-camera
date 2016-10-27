@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent">
+  <com.bnsantos.camera.view.AutoFitTextureView
+    android:id="@+id/texture"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_alignParentBottom="true"
+    android:layout_alignParentStart="true"
+    android:layout_alignParentLeft="true"
+    android:layout_alignParentTop="true"/>
+  <RelativeLayout
+    android:id="@+id/control"
+    android:layout_width="match_parent"
+    android:layout_height="@dimen/control_size"
+    android:layout_alignParentBottom="true"
+    android:layout_alignParentStart="true"
+    android:layout_alignParentLeft="true"
+    android:background="@color/control_bg">
+    <ImageButton
+      android:id="@+id/changeCamera"
+      android:layout_width="@dimen/btn_change_camera"
+      android:layout_height="@dimen/btn_change_camera"
+      android:layout_margin="@dimen/activity_vertical_margin"
+      android:padding="@dimen/btn_action_padding"
+      android:src="@drawable/ic_camera_rear_white_24dp"
+      android:background="@android:drawable/list_selector_background"
+      android:layout_alignParentLeft="true"
+      android:layout_centerVertical="true"/>
+
+    <ImageButton
+      android:id="@+id/action"
+      android:layout_width="@dimen/btn_action_size"
+      android:layout_height="@dimen/btn_action_size"
+      android:padding="@dimen/btn_action_padding"
+      android:layout_gravity="center"
+      android:background="@android:drawable/list_selector_background"
+      android:src="@android:drawable/ic_menu_camera"
+      android:layout_centerInParent="true"/>
+  </RelativeLayout>
+</RelativeLayout>
