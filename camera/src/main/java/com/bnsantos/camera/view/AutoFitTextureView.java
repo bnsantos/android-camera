@@ -2,6 +2,7 @@ package com.bnsantos.camera.view;
 
 import android.content.Context;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.TextureView;
 
 /**
@@ -37,6 +38,7 @@ public class AutoFitTextureView extends TextureView {
     }
     mRatioWidth = width;
     mRatioHeight = height;
+    Log.i("BRUNO", "Ratio = " + (float)width/(float)height);
     requestLayout();
   }
 
@@ -48,9 +50,12 @@ public class AutoFitTextureView extends TextureView {
     if (0 == mRatioWidth || 0 == mRatioHeight) {
       setMeasuredDimension(width, height);
     } else {
+      Log.i("BRUNO", "mRatioWidth="+mRatioWidth+", mRatioHeight="+mRatioHeight);
       if (width < height * mRatioWidth / mRatioHeight) {
+        Log.i("BRUNO", "1-("+width+","+(width * mRatioHeight / mRatioWidth)+")");
         setMeasuredDimension(width, width * mRatioHeight / mRatioWidth);
       } else {
+        Log.i("BRUNO", "1-("+height * mRatioWidth / mRatioHeight+","+(height)+")");
         setMeasuredDimension(height * mRatioWidth / mRatioHeight, height);
       }
     }
