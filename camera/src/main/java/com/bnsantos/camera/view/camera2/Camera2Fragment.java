@@ -31,6 +31,7 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
+import android.support.v4.media.VolumeProviderCompat;
 import android.util.Log;
 import android.util.Size;
 import android.util.SparseIntArray;
@@ -42,6 +43,7 @@ import android.view.ViewGroup;
 import android.widget.ImageButton;
 import android.widget.Toast;
 
+import com.bnsantos.camera.CameraActivity;
 import com.bnsantos.camera.ImageSaver;
 import com.bnsantos.camera.R;
 import com.bnsantos.camera.view.AutoFitTextureView;
@@ -62,7 +64,7 @@ import static android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON_AUTO_FL
 import static android.hardware.camera2.CameraMetadata.FLASH_MODE_OFF;
 
 @TargetApi(Build.VERSION_CODES.LOLLIPOP)
-public class Camera2Fragment extends AbstractCamera2PermissionsFragment implements View.OnClickListener {
+public class Camera2Fragment extends AbstractCamera2PermissionsFragment implements View.OnClickListener, CameraActivity.CameraKeyListener {
   private static final String TAG = Camera2Fragment.class.getSimpleName();
 
   private static final SparseIntArray ORIENTATIONS = new SparseIntArray();
@@ -230,7 +232,6 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
     public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
       process(result);
     }
-
   };
 
   /**
@@ -612,6 +613,11 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
       Log.e(TAG, "Couldn't find any suitable preview size");
       return choices[0];
     }
+  }
+
+  @Override
+  public void onKeyClicked() {
+    takePicture();
   }
 
   /**
