@@ -59,6 +59,7 @@ import java.util.List;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
+import static android.R.id.toggle;
 import static android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON_ALWAYS_FLASH;
 import static android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON_AUTO_FLASH;
 import static android.hardware.camera2.CameraMetadata.FLASH_MODE_OFF;
@@ -71,6 +72,7 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
   private static final String FOLDER = "Simple Camera";
   private static final String BUNDLE_CHOSEN_CAMERA = "bundle_chosen_camera";
   private static final String BUNDLE_FLASH_MODE = "bundle_flash_mode";
+  private static final String BUNDLE_LOCATION = "bundle_location";
 
   static {
     ORIENTATIONS.append(Surface.ROTATION_0, 90);
@@ -143,6 +145,8 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
   private int mChosenCamera = CameraMetadata.LENS_FACING_BACK;
 
   private int mFlashMode = CONTROL_AE_MODE_ON_AUTO_FLASH;
+
+  private boolean mLocationEnabled;
 
   /**
    * The {@link android.util.Size} of camera preview.
@@ -245,6 +249,7 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
   private boolean mFlashSupported;
   private ImageButton mChangeCamera;
   private ImageButton mFlash;
+  private ImageButton mLocationButton;
 
   public static Camera2Fragment newInstance() {
     return new Camera2Fragment();
@@ -266,6 +271,7 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
       if(savedInstanceState.containsKey(BUNDLE_FLASH_MODE)) {
         mFlashMode = savedInstanceState.getInt(BUNDLE_FLASH_MODE);
       }
+      mLocationEnabled = savedInstanceState.getBoolean(BUNDLE_LOCATION, false);
     }
     mTexture = (AutoFitTextureView) view.findViewById(R.id.texture);
     view.findViewById(R.id.action).setOnClickListener(this);
@@ -273,12 +279,15 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
     mChangeCamera.setOnClickListener(this);
     mFlash = (ImageButton) view.findViewById(R.id.flash);
     mFlash.setOnClickListener(this);
+    mLocationButton = (ImageButton) view.findViewById(R.id.location);
+    mLocationButton.setOnClickListener(this);
     updateFlashModeIcon();
   }
 
   @Override
   public void onResume() {
     super.onResume();
+    setLocationIcon();
     startBackgroundThread();
 
     if(mTexture.isAvailable()){
@@ -336,7 +345,7 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
 
   @SuppressWarnings("MissingPermission")
   private void openCamera(int w, int h){
-    if(hasCameraPermission() && hasLocationPermission()) {
+    if(hasCameraPermission()) {
       setUpCameraOutputs(w, h);
       configureTransform(w, h);
       CameraManager manager = (CameraManager) getActivity().getSystemService(Context.CAMERA_SERVICE);
@@ -565,6 +574,8 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
       takePicture();
     }else if(id == R.id.flash){
       changeFlashMode();
+    }else if(id == R.id.location){
+      toggleLocation();
     }else {
       Toast.makeText(getActivity(), "TODO", Toast.LENGTH_SHORT).show();
     }
@@ -796,5 +807,25 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
     super.onSaveInstanceState(outState);
     outState.putInt(BUNDLE_CHOSEN_CAMERA, mChosenCamera);
     outState.putInt(BUNDLE_FLASH_MODE, mFlashMode);
+    outState.putBoolean(BUNDLE_LOCATION, mLocationEnabled);
+  }
+
+  private void setLocationIcon(){
+    if(mLocationEnabled){
+      mLocationButton.setImageResource(R.drawable.ic_location_on_white_24dp);
+    }else{
+      mLocationButton.setImageResource(R.drawable.ic_location_off_white_24dp);
+    }
+  }
+
+  private void toggleLocation(){
+    if(!mLocationEnabled){
+      if(hasLocationPermission(true)){
+        mLocationEnabled = true;
+      }
+    }else{
+      mLocationEnabled = false;
+    }
+    setLocationIcon();
   }
 }

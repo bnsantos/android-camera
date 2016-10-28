@@ -46,10 +46,11 @@ public class AbstractCamera2PermissionsFragment extends Fragment {
     return true;
   }
 
-  protected boolean hasLocationPermission(){
+  protected boolean hasLocationPermission(boolean ask){
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
       if (ContextCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-        requestLocationPermission();
+        if(ask)
+          requestLocationPermission();
         return false;
       }
     }

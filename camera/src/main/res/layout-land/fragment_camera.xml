@@ -15,25 +15,35 @@
     android:layout_alignParentEnd="true"
     android:orientation="horizontal"
     android:background="@color/control_bg">
-    <ImageButton
-      android:id="@+id/changeCamera"
-      android:layout_width="@dimen/btn_change_camera"
-      android:layout_height="@dimen/btn_change_camera"
-      android:layout_margin="@dimen/activity_vertical_margin"
-      android:padding="@dimen/btn_action_padding"
-      android:src="@drawable/ic_camera_rear_white_24dp"
-      android:background="@android:drawable/list_selector_background"
-      android:layout_alignParentBottom="true"
-      android:layout_centerHorizontal="true"/>
+
     <ImageButton
       android:id="@+id/action"
       android:layout_width="@dimen/btn_action_size"
       android:layout_height="@dimen/btn_action_size"
       android:padding="@dimen/btn_action_padding"
       android:layout_gravity="center"
-      android:background="@android:drawable/list_selector_background"
-      android:src="@android:drawable/ic_menu_camera"
+      android:background="@drawable/shutter"
       android:layout_centerInParent="true"/>
+
+    <ImageButton
+      android:id="@+id/changeCamera"
+      android:layout_width="@dimen/btn_change_camera"
+      android:layout_height="@dimen/btn_change_camera"
+      android:padding="@dimen/btn_action_padding"
+      android:src="@drawable/ic_camera_rear_white_24dp"
+      android:background="@android:drawable/list_selector_background"
+      android:layout_alignParentBottom="true"
+      android:layout_alignStart="@+id/action"/>
+
+    <ImageButton
+      android:id="@+id/location"
+      android:layout_width="@dimen/btn_change_camera"
+      android:layout_height="@dimen/btn_change_camera"
+      android:padding="@dimen/btn_action_padding"
+      android:src="@drawable/ic_location_off_white_24dp"
+      android:background="@android:drawable/list_selector_background"
+      android:layout_above="@+id/changeCamera"
+      android:layout_centerHorizontal="true"/>
   </RelativeLayout>
   <ImageButton
     android:id="@+id/flash"
