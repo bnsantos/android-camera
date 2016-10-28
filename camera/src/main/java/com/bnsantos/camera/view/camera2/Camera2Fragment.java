@@ -19,7 +19,11 @@ import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.StreamConfigurationMap;
+import android.media.AudioManager;
 import android.media.ImageReader;
+import android.media.MediaActionSound;
+import android.media.MediaPlayer;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
@@ -53,6 +57,10 @@ import java.util.List;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
+import static android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON_ALWAYS_FLASH;
+import static android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON_AUTO_FLASH;
+import static android.hardware.camera2.CameraMetadata.FLASH_MODE_OFF;
+
 @TargetApi(Build.VERSION_CODES.LOLLIPOP)
 public class Camera2Fragment extends AbstractCamera2PermissionsFragment implements View.OnClickListener {
   private static final String TAG = Camera2Fragment.class.getSimpleName();
@@ -60,6 +68,7 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
   private static final SparseIntArray ORIENTATIONS = new SparseIntArray();
   private static final String FOLDER = "Simple Camera";
   private static final String BUNDLE_CHOSEN_CAMERA = "bundle_chosen_camera";
+  private static final String BUNDLE_FLASH_MODE = "bundle_flash_mode";
 
   static {
     ORIENTATIONS.append(Surface.ROTATION_0, 90);
@@ -129,7 +138,9 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
   private HandlerThread mBackgroundThread;
 
   private String mCameraId;
-  private int mChosenCamera = CameraMetadata.LENS_FACING_FRONT;
+  private int mChosenCamera = CameraMetadata.LENS_FACING_BACK;
+
+  private int mFlashMode = CONTROL_AE_MODE_ON_AUTO_FLASH;
 
   /**
    * The {@link android.util.Size} of camera preview.
@@ -140,7 +151,6 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
    * This is the output file for our picture.
    */
   private File mFile;
-
 
   private ImageReader mImageReader;
   /**
@@ -233,6 +243,7 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
    */
   private boolean mFlashSupported;
   private ImageButton mChangeCamera;
+  private ImageButton mFlash;
 
   public static Camera2Fragment newInstance() {
     return new Camera2Fragment();
@@ -247,13 +258,21 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
   @Override
   public void onViewCreated(View view, Bundle savedInstanceState) {
     super.onViewCreated(view, savedInstanceState);
-    if(savedInstanceState != null && savedInstanceState.containsKey(BUNDLE_CHOSEN_CAMERA)){
-      mChosenCamera = savedInstanceState.getInt(BUNDLE_CHOSEN_CAMERA);
+    if(savedInstanceState != null){
+      if(savedInstanceState.containsKey(BUNDLE_CHOSEN_CAMERA)) {
+        mChosenCamera = savedInstanceState.getInt(BUNDLE_CHOSEN_CAMERA);
+      }
+      if(savedInstanceState.containsKey(BUNDLE_FLASH_MODE)) {
+        mFlashMode = savedInstanceState.getInt(BUNDLE_FLASH_MODE);
+      }
     }
     mTexture = (AutoFitTextureView) view.findViewById(R.id.texture);
     view.findViewById(R.id.action).setOnClickListener(this);
     mChangeCamera = (ImageButton) view.findViewById(R.id.changeCamera);
     mChangeCamera.setOnClickListener(this);
+    mFlash = (ImageButton) view.findViewById(R.id.flash);
+    mFlash.setOnClickListener(this);
+    updateFlashModeIcon();
   }
 
   @Override
@@ -342,6 +361,7 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
    * @param width  The width of available size for camera preview
    * @param height The height of available size for camera preview
    */
+  @SuppressWarnings("SuspiciousNameCombination")
   private void setUpCameraOutputs(int width, int height) {
     Activity activity = getActivity();
     CameraManager manager = (CameraManager) activity.getSystemService(Context.CAMERA_SERVICE);
@@ -426,6 +446,7 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
         // Check if the flash is supported.
         Boolean available = characteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE);
         mFlashSupported = available == null ? false : available;
+        mFlash.setVisibility(mFlashSupported?View.VISIBLE:View.GONE);
 
         mCameraId = cameraId;
         return;
@@ -458,8 +479,7 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
       mPreviewRequestBuilder.addTarget(surface);
 
       // Here, we create a CameraCaptureSession for camera preview.
-      mCameraDevice.createCaptureSession(Arrays.asList(surface, mImageReader.getSurface()),
-          new CameraCaptureSession.StateCallback() {
+      mCameraDevice.createCaptureSession(Arrays.asList(surface, mImageReader.getSurface()), new CameraCaptureSession.StateCallback() {
 
             @Override
             public void onConfigured(@NonNull CameraCaptureSession cameraCaptureSession) {
@@ -473,9 +493,7 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
               try {
                 // Auto focus should be continuous for camera preview.
                 mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
-                //TODO Flash
-                // Flash is automatically enabled when necessary.
-//                setAutoFlash(mPreviewRequestBuilder);
+                setFlash(mPreviewRequestBuilder);
 
                 // Finally, we start displaying the camera preview.
                 mPreviewRequest = mPreviewRequestBuilder.build();
@@ -544,6 +562,8 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
       openCamera(mTexture.getWidth(), mTexture.getHeight());
     }else if(id == R.id.action){
       takePicture();
+    }else if(id == R.id.flash){
+      changeFlashMode();
     }else {
       Toast.makeText(getActivity(), "TODO", Toast.LENGTH_SHORT).show();
     }
@@ -619,6 +639,45 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
     return (ORIENTATIONS.get(rotation) + mSensorOrientation + 270) % 360;
   }
 
+  private void changeFlashMode(){
+    switch (mFlashMode){
+      case CONTROL_AE_MODE_ON_AUTO_FLASH:
+        mFlashMode = CONTROL_AE_MODE_ON_ALWAYS_FLASH;
+        break;
+      case CONTROL_AE_MODE_ON_ALWAYS_FLASH:
+        mFlashMode = FLASH_MODE_OFF;
+        break;
+      case FLASH_MODE_OFF:
+        mFlashMode = CONTROL_AE_MODE_ON_AUTO_FLASH;
+        break;
+    }
+    updateFlashModeIcon();
+  }
+
+  private void updateFlashModeIcon(){
+    switch (mFlashMode){
+      case CONTROL_AE_MODE_ON_AUTO_FLASH:
+        mFlash.setImageResource(R.drawable.ic_flash_auto_white_24dp);
+        break;
+      case CONTROL_AE_MODE_ON_ALWAYS_FLASH:
+        mFlash.setImageResource(R.drawable.ic_flash_on_white_24dp);
+        break;
+      case FLASH_MODE_OFF:
+        mFlash.setImageResource(R.drawable.ic_flash_off_white_24dp);
+        break;
+    }
+  }
+
+  private void setFlash(CaptureRequest.Builder requestBuilder) {
+    if (mFlashSupported) {
+      //TODO
+    }
+  }
+
+  public void shootSound(){
+    MediaActionSound sound = new MediaActionSound();
+    sound.play(MediaActionSound.SHUTTER_CLICK);
+  }
 
   /*
      Take picture
@@ -678,8 +737,9 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
       captureBuilder.addTarget(mImageReader.getSurface());
 
       // Use the same AE and AF modes as the preview.
+      captureBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON_ALWAYS_FLASH);
       captureBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
-      //TODO setAutoFlash(captureBuilder);
+      setFlash(captureBuilder);
 
       // Orientation
       int rotation = activity.getWindowManager().getDefaultDisplay().getRotation();
@@ -691,6 +751,12 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
         public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
           Log.i(TAG, "Capture completed");
           unlockFocus();
+        }
+
+        @Override
+        public void onCaptureStarted(CameraCaptureSession session, CaptureRequest request, long timestamp, long frameNumber) {
+          super.onCaptureStarted(session, request, timestamp, frameNumber);
+          shootSound();
         }
       };
 
@@ -709,7 +775,7 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
     try {
       // Reset the auto-focus trigger
       mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_CANCEL);
-      //TODO setAutoFlash(mPreviewRequestBuilder);
+      setFlash(mPreviewRequestBuilder);
       mCaptureSession.capture(mPreviewRequestBuilder.build(), mCaptureCallback, mBackgroundHandler);
       // After this, the camera will go back to the normal state of preview.
       mState = STATE_PREVIEW;
@@ -723,5 +789,6 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
   public void onSaveInstanceState(Bundle outState) {
     super.onSaveInstanceState(outState);
     outState.putInt(BUNDLE_CHOSEN_CAMERA, mChosenCamera);
+    outState.putInt(BUNDLE_FLASH_MODE, mFlashMode);
   }
 }

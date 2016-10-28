@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
-             android:layout_width="match_parent"
-             android:layout_height="match_parent">
+                android:layout_width="match_parent"
+                android:layout_height="match_parent">
   <com.bnsantos.camera.view.AutoFitTextureView
     android:id="@+id/texture"
     android:layout_width="wrap_content"
@@ -35,4 +35,12 @@
       android:src="@android:drawable/ic_menu_camera"
       android:layout_centerInParent="true"/>
   </RelativeLayout>
+  <ImageButton
+    android:id="@+id/flash"
+    android:layout_width="@dimen/btn_flash"
+    android:layout_height="@dimen/btn_flash"
+    android:background="@android:drawable/list_selector_background"
+    android:src="@drawable/ic_flash_auto_white_24dp"
+    android:layout_alignParentTop="true"
+    android:layout_toStartOf="@+id/control"/>
 </RelativeLayout>
