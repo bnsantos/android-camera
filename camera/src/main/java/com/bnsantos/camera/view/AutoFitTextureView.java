@@ -1,6 +1,7 @@
 package com.bnsantos.camera.view;
 
 import android.content.Context;
+import android.graphics.RectF;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.TextureView;
@@ -38,7 +39,6 @@ public class AutoFitTextureView extends TextureView {
     }
     mRatioWidth = width;
     mRatioHeight = height;
-    Log.i("BRUNO", "Ratio = " + (float)width/(float)height);
     requestLayout();
   }
 
@@ -49,15 +49,33 @@ public class AutoFitTextureView extends TextureView {
     int height = MeasureSpec.getSize(heightMeasureSpec);
     if (0 == mRatioWidth || 0 == mRatioHeight) {
       setMeasuredDimension(width, height);
+      mRect.set(0,0,width,height);
     } else {
-      Log.i("BRUNO", "mRatioWidth="+mRatioWidth+", mRatioHeight="+mRatioHeight);
       if (width < height * mRatioWidth / mRatioHeight) {
-        Log.i("BRUNO", "1-("+width+","+(width * mRatioHeight / mRatioWidth)+")");
+        mRect.set(0,0,width, width * mRatioHeight / mRatioWidth);
         setMeasuredDimension(width, width * mRatioHeight / mRatioWidth);
       } else {
-        Log.i("BRUNO", "1-("+height * mRatioWidth / mRatioHeight+","+(height)+")");
+        mRect.set(0,0,height * mRatioWidth / mRatioHeight, height);
         setMeasuredDimension(height * mRatioWidth / mRatioHeight, height);
       }
     }
+    if(mListener!=null){
+      mListener.onPreviewAreaChanged(mRect);
+    }
+  }
+
+  /**
+   * This listener gets notified when the actual preview frame changes due
+   * to a transform matrix being applied to the TextureView
+   */
+  public interface PreviewAreaChangedListener {
+    public void onPreviewAreaChanged(RectF previewArea);
+  }
+
+  private PreviewAreaChangedListener mListener;
+  private RectF mRect = new RectF();
+
+  public void setListener(PreviewAreaChangedListener listener) {
+    this.mListener = listener;
   }
 }

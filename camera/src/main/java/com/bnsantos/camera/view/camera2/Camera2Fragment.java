@@ -19,11 +19,8 @@ import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.StreamConfigurationMap;
-import android.media.AudioManager;
 import android.media.ImageReader;
 import android.media.MediaActionSound;
-import android.media.MediaPlayer;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
@@ -31,7 +28,6 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
-import android.support.v4.media.VolumeProviderCompat;
 import android.util.Log;
 import android.util.Size;
 import android.util.SparseIntArray;
@@ -47,6 +43,7 @@ import com.bnsantos.camera.CameraActivity;
 import com.bnsantos.camera.ImageSaver;
 import com.bnsantos.camera.R;
 import com.bnsantos.camera.view.AutoFitTextureView;
+import com.bnsantos.camera.view.GridLines;
 
 import java.io.File;
 import java.text.SimpleDateFormat;
@@ -59,7 +56,6 @@ import java.util.List;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
-import static android.R.id.toggle;
 import static android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON_ALWAYS_FLASH;
 import static android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON_AUTO_FLASH;
 import static android.hardware.camera2.CameraMetadata.FLASH_MODE_OFF;
@@ -73,6 +69,7 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
   private static final String BUNDLE_CHOSEN_CAMERA = "bundle_chosen_camera";
   private static final String BUNDLE_FLASH_MODE = "bundle_flash_mode";
   private static final String BUNDLE_LOCATION = "bundle_location";
+  private static final java.lang.String BUNDLE_SHOW_GRID = "bundle_show_grid";
 
   static {
     ORIENTATIONS.append(Surface.ROTATION_0, 90);
@@ -145,8 +142,8 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
   private int mChosenCamera = CameraMetadata.LENS_FACING_BACK;
 
   private int mFlashMode = CONTROL_AE_MODE_ON_AUTO_FLASH;
-
   private boolean mLocationEnabled;
+  private boolean mShowGrid = false;
 
   /**
    * The {@link android.util.Size} of camera preview.
@@ -250,6 +247,8 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
   private ImageButton mChangeCamera;
   private ImageButton mFlash;
   private ImageButton mLocationButton;
+  private ImageButton mGridToggle;
+  private GridLines mGridLines;
 
   public static Camera2Fragment newInstance() {
     return new Camera2Fragment();
@@ -272,6 +271,7 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
         mFlashMode = savedInstanceState.getInt(BUNDLE_FLASH_MODE);
       }
       mLocationEnabled = savedInstanceState.getBoolean(BUNDLE_LOCATION, false);
+      mShowGrid = savedInstanceState.getBoolean(BUNDLE_SHOW_GRID, false);
     }
     mTexture = (AutoFitTextureView) view.findViewById(R.id.texture);
     view.findViewById(R.id.action).setOnClickListener(this);
@@ -281,6 +281,11 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
     mFlash.setOnClickListener(this);
     mLocationButton = (ImageButton) view.findViewById(R.id.location);
     mLocationButton.setOnClickListener(this);
+
+    mGridLines = (GridLines) view.findViewById(R.id.gridLines);
+    mGridToggle = (ImageButton) view.findViewById(R.id.gridToggle);
+    mGridToggle.setOnClickListener(this);
+    mTexture.setListener(mGridLines);
     updateFlashModeIcon();
   }
 
@@ -289,6 +294,7 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
     super.onResume();
     setLocationIcon();
     startBackgroundThread();
+    setGridVisibility();
 
     if(mTexture.isAvailable()){
       openCamera(mTexture.getWidth(), mTexture.getHeight());
@@ -576,6 +582,8 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
       changeFlashMode();
     }else if(id == R.id.location){
       toggleLocation();
+    }else if(id == R.id.gridToggle){
+      toggleGridLines();
     }else {
       Toast.makeText(getActivity(), "TODO", Toast.LENGTH_SHORT).show();
     }
@@ -808,6 +816,7 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
     outState.putInt(BUNDLE_CHOSEN_CAMERA, mChosenCamera);
     outState.putInt(BUNDLE_FLASH_MODE, mFlashMode);
     outState.putBoolean(BUNDLE_LOCATION, mLocationEnabled);
+    outState.putBoolean(BUNDLE_SHOW_GRID, mShowGrid);
   }
 
   private void setLocationIcon(){
@@ -827,5 +836,15 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
       mLocationEnabled = false;
     }
     setLocationIcon();
+  }
+
+  private void setGridVisibility(){
+    mGridLines.setVisibility(mShowGrid?View.VISIBLE: View.GONE);
+    mGridToggle.setImageResource(mShowGrid?R.drawable.ic_grid_on_white_24dp:R.drawable.ic_grid_off_white_24dp);
+  }
+
+  private void toggleGridLines(){
+    mShowGrid = !mShowGrid;
+    setGridVisibility();
   }
 }

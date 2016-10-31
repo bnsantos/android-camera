@@ -7,5 +7,6 @@
   <dimen name="btn_change_camera">50dp</dimen>
   <dimen name="btn_action_padding">10dp</dimen>
   <dimen name="btn_flash">50dp</dimen>
+  <dimen name="grid_line_width">1dp</dimen>
 
 </resources>

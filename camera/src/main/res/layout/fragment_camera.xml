@@ -44,6 +44,15 @@
       android:background="@android:drawable/list_selector_background"
       android:layout_alignTop="@+id/changeCamera"
       android:layout_toEndOf="@+id/changeCamera"/>
+    <ImageButton
+      android:id="@+id/gridToggle"
+      android:layout_width="@dimen/btn_change_camera"
+      android:layout_height="@dimen/btn_change_camera"
+      android:padding="@dimen/btn_action_padding"
+      android:src="@drawable/ic_grid_off_white_24dp"
+      android:background="@android:drawable/list_selector_background"
+      android:layout_alignTop="@+id/location"
+      android:layout_toEndOf="@+id/location"/>
   </RelativeLayout>
   <ImageButton
     android:id="@+id/flash"
@@ -53,4 +62,10 @@
     android:layout_alignParentEnd="true"
     android:background="@android:drawable/list_selector_background"
     android:src="@drawable/ic_flash_auto_white_24dp"/>
+  <com.bnsantos.camera.view.GridLines
+    android:id="@+id/gridLines"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:visibility="gone"
+    android:layout_above="@+id/control"/>
 </RelativeLayout>
