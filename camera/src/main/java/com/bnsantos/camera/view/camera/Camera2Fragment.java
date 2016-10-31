@@ -1,4 +1,4 @@
-package com.bnsantos.camera.view.camera2;
+package com.bnsantos.camera.view.camera;
 
 import android.annotation.TargetApi;
 import android.app.Activity;
@@ -36,14 +36,11 @@ import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.ImageButton;
-import android.widget.Toast;
 
 import com.bnsantos.camera.CameraActivity;
 import com.bnsantos.camera.ImageSaver;
 import com.bnsantos.camera.R;
 import com.bnsantos.camera.view.AutoFitTextureView;
-import com.bnsantos.camera.view.GridLines;
 
 import java.io.File;
 import java.text.SimpleDateFormat;
@@ -67,9 +64,6 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
   private static final SparseIntArray ORIENTATIONS = new SparseIntArray();
   private static final String FOLDER = "Simple Camera";
   private static final String BUNDLE_CHOSEN_CAMERA = "bundle_chosen_camera";
-  private static final String BUNDLE_FLASH_MODE = "bundle_flash_mode";
-  private static final String BUNDLE_LOCATION = "bundle_location";
-  private static final java.lang.String BUNDLE_SHOW_GRID = "bundle_show_grid";
 
   static {
     ORIENTATIONS.append(Surface.ROTATION_0, 90);
@@ -141,9 +135,6 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
   private String mCameraId;
   private int mChosenCamera = CameraMetadata.LENS_FACING_BACK;
 
-  private int mFlashMode = CONTROL_AE_MODE_ON_AUTO_FLASH;
-  private boolean mLocationEnabled;
-  private boolean mShowGrid = false;
 
   /**
    * The {@link android.util.Size} of camera preview.
@@ -240,16 +231,6 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
    */
   private int mSensorOrientation;
 
-  /**
-   * Whether the current camera device supports Flash or not.
-   */
-  private boolean mFlashSupported;
-  private ImageButton mChangeCamera;
-  private ImageButton mFlash;
-  private ImageButton mLocationButton;
-  private ImageButton mGridToggle;
-  private GridLines mGridLines;
-
   public static Camera2Fragment newInstance() {
     return new Camera2Fragment();
   }
@@ -267,24 +248,8 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
       if(savedInstanceState.containsKey(BUNDLE_CHOSEN_CAMERA)) {
         mChosenCamera = savedInstanceState.getInt(BUNDLE_CHOSEN_CAMERA);
       }
-      if(savedInstanceState.containsKey(BUNDLE_FLASH_MODE)) {
-        mFlashMode = savedInstanceState.getInt(BUNDLE_FLASH_MODE);
-      }
-      mLocationEnabled = savedInstanceState.getBoolean(BUNDLE_LOCATION, false);
-      mShowGrid = savedInstanceState.getBoolean(BUNDLE_SHOW_GRID, false);
     }
     mTexture = (AutoFitTextureView) view.findViewById(R.id.texture);
-    view.findViewById(R.id.action).setOnClickListener(this);
-    mChangeCamera = (ImageButton) view.findViewById(R.id.changeCamera);
-    mChangeCamera.setOnClickListener(this);
-    mFlash = (ImageButton) view.findViewById(R.id.flash);
-    mFlash.setOnClickListener(this);
-    mLocationButton = (ImageButton) view.findViewById(R.id.location);
-    mLocationButton.setOnClickListener(this);
-
-    mGridLines = (GridLines) view.findViewById(R.id.gridLines);
-    mGridToggle = (ImageButton) view.findViewById(R.id.gridToggle);
-    mGridToggle.setOnClickListener(this);
     mTexture.setListener(mGridLines);
     updateFlashModeIcon();
   }
@@ -462,7 +427,7 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
         // Check if the flash is supported.
         Boolean available = characteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE);
         mFlashSupported = available == null ? false : available;
-        mFlash.setVisibility(mFlashSupported?View.VISIBLE:View.GONE);
+        updateFlashButtonVisibility();
 
         mCameraId = cameraId;
         return;
@@ -563,31 +528,6 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
     mTexture.setTransform(matrix);
   }
 
-  @Override
-  public void onClick(View v) {
-    int id = v.getId();
-    if (id == R.id.changeCamera) {
-      if (mChosenCamera == CameraMetadata.LENS_FACING_BACK) {
-        mChosenCamera = CameraMetadata.LENS_FACING_FRONT;
-        mChangeCamera.setImageResource(R.drawable.ic_camera_front_white_24dp);
-      }else {
-        mChosenCamera = CameraMetadata.LENS_FACING_BACK;
-        mChangeCamera.setImageResource(R.drawable.ic_camera_rear_white_24dp);
-      }
-      closeCamera();
-      openCamera(mTexture.getWidth(), mTexture.getHeight());
-    }else if(id == R.id.action){
-      takePicture();
-    }else if(id == R.id.flash){
-      changeFlashMode();
-    }else if(id == R.id.location){
-      toggleLocation();
-    }else if(id == R.id.gridToggle){
-      toggleGridLines();
-    }else {
-      Toast.makeText(getActivity(), "TODO", Toast.LENGTH_SHORT).show();
-    }
-  }
 
   /**
    * Given {@code choices} of {@code Size}s supported by a camera, choose the smallest one that
@@ -664,7 +604,8 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
     return (ORIENTATIONS.get(rotation) + mSensorOrientation + 270) % 360;
   }
 
-  private void changeFlashMode(){
+  @Override
+  protected void changeFlashMode(){
     switch (mFlashMode){
       case CONTROL_AE_MODE_ON_AUTO_FLASH:
         mFlashMode = CONTROL_AE_MODE_ON_ALWAYS_FLASH;
@@ -679,19 +620,7 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
     updateFlashModeIcon();
   }
 
-  private void updateFlashModeIcon(){
-    switch (mFlashMode){
-      case CONTROL_AE_MODE_ON_AUTO_FLASH:
-        mFlash.setImageResource(R.drawable.ic_flash_auto_white_24dp);
-        break;
-      case CONTROL_AE_MODE_ON_ALWAYS_FLASH:
-        mFlash.setImageResource(R.drawable.ic_flash_on_white_24dp);
-        break;
-      case FLASH_MODE_OFF:
-        mFlash.setImageResource(R.drawable.ic_flash_off_white_24dp);
-        break;
-    }
-  }
+
 
   private void setFlash(CaptureRequest.Builder requestBuilder) {
     if (mFlashSupported) {
@@ -711,7 +640,8 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
   /**
    * Initiate a still image capture.
    */
-  private void takePicture() {
+  @Override
+  protected void takePicture() {
     if(hasStoragePermission())
       lockFocus();
   }
@@ -814,20 +744,10 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
   public void onSaveInstanceState(Bundle outState) {
     super.onSaveInstanceState(outState);
     outState.putInt(BUNDLE_CHOSEN_CAMERA, mChosenCamera);
-    outState.putInt(BUNDLE_FLASH_MODE, mFlashMode);
-    outState.putBoolean(BUNDLE_LOCATION, mLocationEnabled);
-    outState.putBoolean(BUNDLE_SHOW_GRID, mShowGrid);
   }
 
-  private void setLocationIcon(){
-    if(mLocationEnabled){
-      mLocationButton.setImageResource(R.drawable.ic_location_on_white_24dp);
-    }else{
-      mLocationButton.setImageResource(R.drawable.ic_location_off_white_24dp);
-    }
-  }
-
-  private void toggleLocation(){
+  @Override
+  protected void toggleLocation(){
     if(!mLocationEnabled){
       if(hasLocationPermission(true)){
         mLocationEnabled = true;
@@ -838,13 +758,16 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
     setLocationIcon();
   }
 
-  private void setGridVisibility(){
-    mGridLines.setVisibility(mShowGrid?View.VISIBLE: View.GONE);
-    mGridToggle.setImageResource(mShowGrid?R.drawable.ic_grid_on_white_24dp:R.drawable.ic_grid_off_white_24dp);
-  }
-
-  private void toggleGridLines(){
-    mShowGrid = !mShowGrid;
-    setGridVisibility();
+  @Override
+  protected void changeCamera() {
+    if (mChosenCamera == CameraMetadata.LENS_FACING_BACK) {
+      mChosenCamera = CameraMetadata.LENS_FACING_FRONT;
+      mChangeCamera.setImageResource(R.drawable.ic_camera_front_white_24dp);
+    }else {
+      mChosenCamera = CameraMetadata.LENS_FACING_BACK;
+      mChangeCamera.setImageResource(R.drawable.ic_camera_rear_white_24dp);
+    }
+    closeCamera();
+    openCamera(mTexture.getWidth(), mTexture.getHeight());
   }
 }

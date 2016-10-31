@@ -1,4 +1,4 @@
-package com.bnsantos.camera.view.camera2;
+package com.bnsantos.camera.view.camera;
 
 
 import android.Manifest;
@@ -6,7 +6,6 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
 import android.app.DialogFragment;
-import android.app.Fragment;
 import android.content.DialogInterface;
 import android.content.pm.PackageManager;
 import android.os.Build;
@@ -16,7 +15,7 @@ import android.support.v4.content.ContextCompat;
 
 import com.bnsantos.camera.R;
 
-public class AbstractCamera2PermissionsFragment extends Fragment {
+public abstract class AbstractCamera2PermissionsFragment extends AbstractCameraFragment {
   private static final int REQUEST_CAMERA_PERMISSION = 1;
   private static final int REQUEST_LOCATION_PERMISSION = 2;
   private static final int REQUEST_STORAGE_PERMISSION = 3;

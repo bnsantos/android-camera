@@ -6,7 +6,7 @@ import android.os.Bundle;
 import android.view.KeyEvent;
 import android.widget.Toast;
 
-import com.bnsantos.camera.view.camera2.Camera2Fragment;
+import com.bnsantos.camera.view.camera.Camera2Fragment;
 
 public class CameraActivity extends Activity {
 
