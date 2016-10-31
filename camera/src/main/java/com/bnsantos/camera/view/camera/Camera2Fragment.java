@@ -7,6 +7,7 @@ import android.content.res.Configuration;
 import android.graphics.ImageFormat;
 import android.graphics.Matrix;
 import android.graphics.Point;
+import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
@@ -20,7 +21,6 @@ import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.ImageReader;
-import android.media.MediaActionSound;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
@@ -50,6 +50,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
@@ -58,7 +59,7 @@ import static android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON_AUTO_FL
 import static android.hardware.camera2.CameraMetadata.FLASH_MODE_OFF;
 
 @TargetApi(Build.VERSION_CODES.LOLLIPOP)
-public class Camera2Fragment extends AbstractCamera2PermissionsFragment implements View.OnClickListener, CameraActivity.CameraKeyListener {
+public class Camera2Fragment extends AbstractCamera2PermissionsFragment implements View.OnClickListener, CameraActivity.CameraKeyListener, AutoFitTextureView.TouchEventInterface {
   private static final String TAG = Camera2Fragment.class.getSimpleName();
 
   private static final SparseIntArray ORIENTATIONS = new SparseIntArray();
@@ -141,9 +142,7 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
    */
   private Size mPreviewSize;
 
-  /**
-   * This is the output file for our picture.
-   */
+  private SimpleDateFormat mDateFormat = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault());
   private File mFile;
 
   private ImageReader mImageReader;
@@ -158,7 +157,8 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
       if(!directory.exists()){
         Log.i(TAG, "Creating folders: " + directory.mkdirs() );
       }
-      String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+
+      String timeStamp = mDateFormat.format(new Date());
       mFile = new File(directory, "pic_"+timeStamp+".jpg");
       mBackgroundHandler.post(new ImageSaver(getActivity(), reader.acquireNextImage(), mFile));
     }
@@ -231,6 +231,8 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
    */
   private int mSensorOrientation;
 
+  private Float mMaxDigitalZoom;
+
   public static Camera2Fragment newInstance() {
     return new Camera2Fragment();
   }
@@ -250,7 +252,7 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
       }
     }
     mTexture = (AutoFitTextureView) view.findViewById(R.id.texture);
-    mTexture.setListener(mGridLines);
+    mTexture.setAreaChangedListener(mGridLines);
     updateFlashModeIcon();
   }
 
@@ -260,6 +262,7 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
     setLocationIcon();
     startBackgroundThread();
     setGridVisibility();
+    updateZoom();
 
     if(mTexture.isAvailable()){
       openCamera(mTexture.getWidth(), mTexture.getHeight());
@@ -358,6 +361,14 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
         StreamConfigurationMap map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
         if (map == null) {
           continue;
+        }
+
+        mMaxDigitalZoom = characteristics.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM);
+        if(isDigitalZoomEnabled()) {
+          mTexture.setTouchListener(this);
+          mMaxDigitalZoom *= 5;//TODO
+        }else{
+          mTexture.setTouchListener(null);
         }
 
         // For still image captures, we use the largest available size.
@@ -478,7 +489,7 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
 
                 // Finally, we start displaying the camera preview.
                 mPreviewRequest = mPreviewRequestBuilder.build();
-                mCaptureSession.setRepeatingRequest(mPreviewRequest, null, mBackgroundHandler);
+                setRepeatingRequest();
               } catch (CameraAccessException e) {
                 e.printStackTrace();
               }
@@ -624,13 +635,8 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
 
   private void setFlash(CaptureRequest.Builder requestBuilder) {
     if (mFlashSupported) {
-      //TODO
+      //TODO FLASH
     }
-  }
-
-  public void shootSound(){
-    MediaActionSound sound = new MediaActionSound();
-    sound.play(MediaActionSound.SHUTTER_CLICK);
   }
 
   /*
@@ -699,6 +705,7 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
       // Orientation
       int rotation = activity.getWindowManager().getDefaultDisplay().getRotation();
       captureBuilder.set(CaptureRequest.JPEG_ORIENTATION, getOrientation(rotation));
+      captureBuilder.set(CaptureRequest.JPEG_QUALITY, (byte) 100);
 
       CameraCaptureSession.CaptureCallback CaptureCallback = new CameraCaptureSession.CaptureCallback() {
 
@@ -709,7 +716,7 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
         }
 
         @Override
-        public void onCaptureStarted(CameraCaptureSession session, CaptureRequest request, long timestamp, long frameNumber) {
+        public void onCaptureStarted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, long timestamp, long frameNumber) {
           super.onCaptureStarted(session, request, timestamp, frameNumber);
           shootSound();
         }
@@ -734,10 +741,18 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
       mCaptureSession.capture(mPreviewRequestBuilder.build(), mCaptureCallback, mBackgroundHandler);
       // After this, the camera will go back to the normal state of preview.
       mState = STATE_PREVIEW;
-      mCaptureSession.setRepeatingRequest(mPreviewRequest, mCaptureCallback, mBackgroundHandler);
+
+      setRepeatingRequest();
     } catch (CameraAccessException e) {
       e.printStackTrace();
     }
+  }
+
+  private void setRepeatingRequest() throws CameraAccessException {
+    if(isDigitalZoomEnabled() && mZoomLevel != ZOOM_LEVEL_START){
+      updateZoom();
+    }
+    mCaptureSession.setRepeatingRequest(mPreviewRequestBuilder.build(), mCaptureCallback, mBackgroundHandler);
   }
 
   @Override
@@ -769,5 +784,55 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
     }
     closeCamera();
     openCamera(mTexture.getWidth(), mTexture.getHeight());
+  }
+
+  /*
+    Zoom
+   */
+  private boolean isDigitalZoomEnabled() {
+    return mMaxDigitalZoom != null && mMaxDigitalZoom >0.0f;
+  }
+
+  @Override
+  public void onZoom(float scaleFactor) {
+    if(isDigitalZoomEnabled()){
+      if (scaleFactor > 1.0f) {
+        if (mZoomLevel < mMaxDigitalZoom)
+          mZoomLevel++;
+      } else {
+        if (mZoomLevel > 1)
+          mZoomLevel--;
+      }
+      try {
+        setRepeatingRequest();
+      } catch (CameraAccessException e) {
+        e.printStackTrace();
+        e.printStackTrace();
+        Log.i(TAG, "Cannot update zoom");
+      }
+    }
+  }
+
+  private void updateZoom() {
+    if (isDigitalZoomEnabled()) {
+      try {
+        CameraManager manager = (CameraManager) getActivity().getSystemService(Context.CAMERA_SERVICE);
+        CameraCharacteristics characteristics = manager.getCameraCharacteristics(mCameraId);
+        Rect m = characteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+
+        if (m != null) {
+          int minW = (int) (m.width() / mMaxDigitalZoom);
+          int minH = (int) (m.height() / mMaxDigitalZoom);
+          int difW = m.width() - minW;
+          int difH = m.height() - minH;
+          int cropW = difW / 100 * mZoomLevel;
+          int cropH = difH / 100 * mZoomLevel;
+
+          Rect zoom = new Rect(cropW, cropH, m.width() - cropW, m.height() - cropH);
+          mPreviewRequestBuilder.set(CaptureRequest.SCALER_CROP_REGION, zoom);
+        }
+      } catch (CameraAccessException e) {
+      }
+    }
   }
 }

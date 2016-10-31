@@ -1,6 +1,7 @@
 package com.bnsantos.camera.view.camera;
 
 import android.app.Fragment;
+import android.media.MediaActionSound;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.ImageButton;
@@ -16,12 +17,14 @@ import static android.hardware.camera2.CameraMetadata.FLASH_MODE_OFF;
 public abstract class AbstractCameraFragment extends Fragment implements View.OnClickListener {
   private static final String BUNDLE_FLASH_MODE = "bundle_flash_mode";
   private static final String BUNDLE_LOCATION = "bundle_location";
-  private static final java.lang.String BUNDLE_SHOW_GRID = "bundle_show_grid";
+  private static final String BUNDLE_SHOW_GRID = "bundle_show_grid";
+  private static final String BUNDLE_ZOOM_LEVEL = "bundle_zoom_level";
 
   protected int mFlashMode = CONTROL_AE_MODE_ON_AUTO_FLASH;
   protected boolean mLocationEnabled;
   protected boolean mShowGrid = false;
 
+  protected static final int ZOOM_LEVEL_START = 1;
 
   protected ImageButton mChangeCamera;
   private ImageButton mFlash;
@@ -29,6 +32,8 @@ public abstract class AbstractCameraFragment extends Fragment implements View.On
   protected boolean mFlashSupported;
   private ImageButton mGridToggle;
   protected GridLines mGridLines;
+  private MediaActionSound mMediaActionSound;
+  protected int mZoomLevel = ZOOM_LEVEL_START;
 
   @Override
   public void onViewCreated(View view, Bundle savedInstanceState) {
@@ -36,6 +41,9 @@ public abstract class AbstractCameraFragment extends Fragment implements View.On
     if(savedInstanceState != null){
       if(savedInstanceState.containsKey(BUNDLE_FLASH_MODE)) {
         mFlashMode = savedInstanceState.getInt(BUNDLE_FLASH_MODE);
+      }
+      if(savedInstanceState.containsKey(BUNDLE_ZOOM_LEVEL)) {
+        mZoomLevel = savedInstanceState.getInt(BUNDLE_ZOOM_LEVEL);
       }
       mLocationEnabled = savedInstanceState.getBoolean(BUNDLE_LOCATION, false);
       mShowGrid = savedInstanceState.getBoolean(BUNDLE_SHOW_GRID, false);
@@ -60,6 +68,7 @@ public abstract class AbstractCameraFragment extends Fragment implements View.On
     outState.putInt(BUNDLE_FLASH_MODE, mFlashMode);
     outState.putBoolean(BUNDLE_LOCATION, mLocationEnabled);
     outState.putBoolean(BUNDLE_SHOW_GRID, mShowGrid);
+    outState.putInt(BUNDLE_ZOOM_LEVEL, mZoomLevel);
   }
 
   @Override
@@ -118,5 +127,12 @@ public abstract class AbstractCameraFragment extends Fragment implements View.On
         mFlash.setImageResource(R.drawable.ic_flash_off_white_24dp);
         break;
     }
+  }
+
+  protected void shootSound(){
+    if(mMediaActionSound == null) {
+      mMediaActionSound = new MediaActionSound();
+    }
+    mMediaActionSound.play(MediaActionSound.SHUTTER_CLICK);
   }
 }

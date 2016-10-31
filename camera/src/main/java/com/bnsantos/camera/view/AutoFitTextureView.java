@@ -4,6 +4,9 @@ import android.content.Context;
 import android.graphics.RectF;
 import android.util.AttributeSet;
 import android.util.Log;
+import android.view.GestureDetector;
+import android.view.MotionEvent;
+import android.view.ScaleGestureDetector;
 import android.view.TextureView;
 
 /**
@@ -12,6 +15,13 @@ import android.view.TextureView;
 public class AutoFitTextureView extends TextureView {
   private int mRatioWidth = 0;
   private int mRatioHeight = 0;
+  private GestureDetector mGestureDetector = null;
+  private ScaleGestureDetector mScaleGestureDetector = null;
+
+  private PreviewAreaChangedListener mAreaChangedListener;
+  private RectF mRect = new RectF();
+
+  private TouchEventInterface mTouchListener;
 
   public AutoFitTextureView(Context context) {
     this(context, null);
@@ -23,6 +33,16 @@ public class AutoFitTextureView extends TextureView {
 
   public AutoFitTextureView(Context context, AttributeSet attrs, int defStyle) {
     super(context, attrs, defStyle);
+    mGestureDetector = new GestureDetector(getContext(), new GestureDetector.SimpleOnGestureListener());
+    mScaleGestureDetector = new ScaleGestureDetector(getContext(), new ScaleGestureDetector.SimpleOnScaleGestureListener() {
+      @Override
+      public boolean onScale(ScaleGestureDetector detector) {
+        if(mTouchListener!=null){
+          mTouchListener.onZoom(detector.getScaleFactor());
+        }
+        return true;
+      }
+    });
   }
 
   /**
@@ -59,9 +79,19 @@ public class AutoFitTextureView extends TextureView {
         setMeasuredDimension(height * mRatioWidth / mRatioHeight, height);
       }
     }
-    if(mListener!=null){
-      mListener.onPreviewAreaChanged(mRect);
+    if(mAreaChangedListener !=null){
+      mAreaChangedListener.onPreviewAreaChanged(mRect);
     }
+  }
+
+  @Override
+  public boolean onTouchEvent(MotionEvent event) {
+    if(mGestureDetector.onTouchEvent(event)){
+      return true;
+    }
+
+    mScaleGestureDetector.onTouchEvent(event);
+    return true;
   }
 
   /**
@@ -69,13 +99,18 @@ public class AutoFitTextureView extends TextureView {
    * to a transform matrix being applied to the TextureView
    */
   public interface PreviewAreaChangedListener {
-    public void onPreviewAreaChanged(RectF previewArea);
+    void onPreviewAreaChanged(RectF previewArea);
   }
 
-  private PreviewAreaChangedListener mListener;
-  private RectF mRect = new RectF();
+  public void setAreaChangedListener(PreviewAreaChangedListener listener) {
+    this.mAreaChangedListener = listener;
+  }
 
-  public void setListener(PreviewAreaChangedListener listener) {
-    this.mListener = listener;
+  public interface TouchEventInterface{
+    void onZoom(float scaleFactor);
+  }
+
+  public void setTouchListener(TouchEventInterface touchListener) {
+    this.mTouchListener = touchListener;
   }
 }
