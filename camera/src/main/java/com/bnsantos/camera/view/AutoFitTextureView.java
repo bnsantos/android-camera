@@ -91,6 +91,12 @@ public class AutoFitTextureView extends TextureView {
     }
 
     mScaleGestureDetector.onTouchEvent(event);
+
+    if(event.getPointerCount() == 1){
+      if(mTouchListener!=null){
+        mTouchListener.onFocus(event.getX(), event.getY());
+      }
+    }
     return true;
   }
 
@@ -108,6 +114,7 @@ public class AutoFitTextureView extends TextureView {
 
   public interface TouchEventInterface{
     void onZoom(float scaleFactor);
+    void onFocus(float x, float y);
   }
 
   public void setTouchListener(TouchEventInterface touchListener) {

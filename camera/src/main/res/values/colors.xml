@@ -2,4 +2,6 @@
 <resources>
   <color name="control_bg">#64000000</color>
   <color name="grid_line">#33FFFFFF</color>
+  <color name="focus_color">#ffffffff</color>
+
 </resources>

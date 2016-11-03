@@ -10,6 +10,7 @@ import android.graphics.Point;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.SurfaceTexture;
+import android.hardware.Camera;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraCharacteristics;
@@ -19,6 +20,7 @@ import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
+import android.hardware.camera2.params.MeteringRectangle;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.ImageReader;
 import android.os.Build;
@@ -41,6 +43,7 @@ import com.bnsantos.camera.CameraActivity;
 import com.bnsantos.camera.ImageSaver;
 import com.bnsantos.camera.R;
 import com.bnsantos.camera.view.AutoFitTextureView;
+import com.bnsantos.camera.view.focusring.FocusRing;
 
 import java.io.File;
 import java.text.SimpleDateFormat;
@@ -65,6 +68,8 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
   private static final SparseIntArray ORIENTATIONS = new SparseIntArray();
   private static final String FOLDER = "Simple Camera";
   private static final String BUNDLE_CHOSEN_CAMERA = "bundle_chosen_camera";
+
+  private FocusRing mFocusRing;
 
   static {
     ORIENTATIONS.append(Surface.ROTATION_0, 90);
@@ -164,7 +169,6 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
     }
   };
 
-  private CaptureRequest mPreviewRequest;
   private CaptureRequest.Builder mPreviewRequestBuilder;
 
   private CameraCaptureSession mCaptureSession;
@@ -232,6 +236,10 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
   private int mSensorOrientation;
 
   private Float mMaxDigitalZoom;
+  private Integer mMaxAFRegions;
+  private MeteringRectangle[] mAFRegions = null; // no need for has_scalar_crop_region, as we can set to null instead
+  private Integer mMaxAERegions;
+  private MeteringRectangle [] mAERegions = null; // no need for has_scalar_crop_region, as we can set to null instead
 
   public static Camera2Fragment newInstance() {
     return new Camera2Fragment();
@@ -253,6 +261,7 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
     }
     mTexture = (AutoFitTextureView) view.findViewById(R.id.texture);
     mTexture.setAreaChangedListener(mGridLines);
+    mFocusRing = (FocusRing) view.findViewById(R.id.focusRing);
     updateFlashModeIcon();
   }
 
@@ -262,7 +271,6 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
     setLocationIcon();
     startBackgroundThread();
     setGridVisibility();
-    updateZoom();
 
     if(mTexture.isAvailable()){
       openCamera(mTexture.getWidth(), mTexture.getHeight());
@@ -362,6 +370,9 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
         if (map == null) {
           continue;
         }
+
+        mMaxAFRegions = characteristics.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AF);
+        mMaxAERegions = characteristics.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AE);
 
         mMaxDigitalZoom = characteristics.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM);
         if(isDigitalZoomEnabled()) {
@@ -483,12 +494,6 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
               // When the session is ready, we start displaying the preview.
               mCaptureSession = cameraCaptureSession;
               try {
-                // Auto focus should be continuous for camera preview.
-                mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
-                setFlash(mPreviewRequestBuilder);
-
-                // Finally, we start displaying the camera preview.
-                mPreviewRequest = mPreviewRequestBuilder.build();
                 setRepeatingRequest();
               } catch (CameraAccessException e) {
                 e.printStackTrace();
@@ -695,12 +700,13 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
       }
       // This is the CaptureRequest.Builder that we use to take a picture.
       final CaptureRequest.Builder captureBuilder = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
+      setUpBuilder(captureBuilder);
       captureBuilder.addTarget(mImageReader.getSurface());
 
       // Use the same AE and AF modes as the preview.
-      captureBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON_ALWAYS_FLASH);
+      /*captureBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON_ALWAYS_FLASH);
       captureBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
-      setFlash(captureBuilder);
+      setFlash(captureBuilder);*/
 
       // Orientation
       int rotation = activity.getWindowManager().getDefaultDisplay().getRotation();
@@ -737,7 +743,6 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
     try {
       // Reset the auto-focus trigger
       mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_CANCEL);
-      setFlash(mPreviewRequestBuilder);
       mCaptureSession.capture(mPreviewRequestBuilder.build(), mCaptureCallback, mBackgroundHandler);
       // After this, the camera will go back to the normal state of preview.
       mState = STATE_PREVIEW;
@@ -749,9 +754,7 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
   }
 
   private void setRepeatingRequest() throws CameraAccessException {
-    if(isDigitalZoomEnabled() && mZoomLevel != ZOOM_LEVEL_START){
-      updateZoom();
-    }
+    setUpBuilder(mPreviewRequestBuilder);
     mCaptureSession.setRepeatingRequest(mPreviewRequestBuilder.build(), mCaptureCallback, mBackgroundHandler);
   }
 
@@ -813,8 +816,112 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
     }
   }
 
-  private void updateZoom() {
-    if (isDigitalZoomEnabled()) {
+  @Override
+  public void onFocus(final float x, final float y) {
+    getActivity().runOnUiThread(new Runnable() {
+      @Override
+      public void run() {
+        /*cancelAutoFocus();
+        initializeMeteringAreas(x, y);
+        initializeFocusAreas(x, y);
+        autoFocus();*/
+
+        mFocusRing.stopFocusAnimations();
+        mFocusRing.startActiveFocus();
+        mFocusRing.setFocusLocation(x, y);
+      }
+    });
+  }
+
+  /*private void cancelAutoFocus() {
+    Log.v(TAG, "Cancel autofocus.");
+    // Reset the tap area before calling mListener.cancelAutofocus.
+    // Otherwise, focus mode stays at auto and the tap area passed to the
+    // driver is not reset.
+    resetTouchFocus();
+    mListener.cancelAutoFocus();
+    mState = STATE_IDLE;
+    mFocusLocked = false;
+    mHandler.removeMessages(RESET_TOUCH_FOCUS);
+  }
+
+  private void autoFocus() {
+    autoFocus(FOCUS_STATE_FOCUSING);
+  }
+
+  private void autoFocus(int focusingState) {
+    CameraAgent agent;
+    mCameraDevice.au
+    mListener.autoFocus();
+    mState = focusingState;
+    mHandler.removeMessages(FOCUS_RESET_TOUCH_FOCUS);
+  }
+
+  private void initializeMeteringAreas(int x, int y) {
+    if (mMeteringArea == null) {
+      mMeteringArea = new ArrayList<Camera.Area>();
+      mMeteringArea.add(new Camera.Area(new Rect(), 1));
+    }
+
+    // Convert the coordinates to driver format.
+    mMeteringArea.get(0).rect = computeCameraRectFromPreviewCoordinates(x, y, getAERegionSizePx());
+  }
+
+  private void initializeFocusAreas(int x, int y) {
+    if (mFocusArea == null) {
+      mFocusArea = new ArrayList<Camera.Area>();
+      mFocusArea.add(new Area(new Rect(), 1));
+    }
+
+    // Convert the coordinates to driver format.
+    mFocusArea.get(0).rect = computeCameraRectFromPreviewCoordinates(x, y, getAFRegionSizePx());
+  }*/
+
+  private void setUpBuilder(CaptureRequest.Builder builder){
+    setAEMode(builder);
+    setAFMode(builder);
+    setAFRegions(builder);
+    setAERegions(builder);
+    setZoom(builder);
+  }
+
+  private void setAEMode(CaptureRequest.Builder builder){
+    switch (mFlashMode){
+      case CONTROL_AE_MODE_ON_ALWAYS_FLASH:
+        builder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON_ALWAYS_FLASH);
+        builder.set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_OFF);
+        break;
+      case CONTROL_AE_MODE_ON_AUTO_FLASH:
+        builder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON_AUTO_FLASH);
+        builder.set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_OFF);
+        break;
+      default:
+        builder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON);
+        builder.set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_OFF);
+    }
+  }
+
+  private void setAFMode(CaptureRequest.Builder builder) {
+    /*
+      TODO not sure what AFMode to use here
+     */
+    builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
+  }
+
+  private void setAERegions(CaptureRequest.Builder builder) {
+    if(mMaxAERegions != null && mMaxAERegions > 0 && mAERegions != null){
+      builder.set(CaptureRequest.CONTROL_AE_REGIONS, mAERegions);
+    }
+  }
+
+  private void setAFRegions(CaptureRequest.Builder builder) {
+    if(mMaxAFRegions != null && mMaxAFRegions > 0 && mAFRegions != null){
+      builder.set(CaptureRequest.CONTROL_AF_REGIONS, mAFRegions);
+    }
+  }
+
+  private void setZoom(CaptureRequest.Builder builder) {
+    if (isDigitalZoomEnabled() && mZoomLevel != ZOOM_LEVEL_START) {
       try {
         CameraManager manager = (CameraManager) getActivity().getSystemService(Context.CAMERA_SERVICE);
         CameraCharacteristics characteristics = manager.getCameraCharacteristics(mCameraId);
@@ -829,7 +936,7 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
           int cropH = difH / 100 * mZoomLevel;
 
           Rect zoom = new Rect(cropW, cropH, m.width() - cropW, m.height() - cropH);
-          mPreviewRequestBuilder.set(CaptureRequest.SCALER_CROP_REGION, zoom);
+          builder.set(CaptureRequest.SCALER_CROP_REGION, zoom);
         }
       } catch (CameraAccessException e) {
       }

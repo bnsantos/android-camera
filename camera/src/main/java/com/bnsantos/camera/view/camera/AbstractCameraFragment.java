@@ -26,6 +26,14 @@ public abstract class AbstractCameraFragment extends Fragment implements View.On
 
   protected static final int ZOOM_LEVEL_START = 1;
 
+  protected int mFocusState = FOCUS_STATE_IDLE;
+  protected static final int FOCUS_STATE_IDLE = 0; // Focus is not active.
+  protected static final int FOCUS_STATE_FOCUSING = 1; // Focus is in progress.
+  // Focus is in progress and the camera should take a picture after focus finishes.
+  protected static final int FOCUS_STATE_FOCUSING_SNAP_ON_FINISH = 2;
+  protected static final int FOCUS_STATE_SUCCESS = 3; // Focus finishes and succeeds.
+  protected static final int FOCUS_STATE_FAIL = 4; // Focus finishes and fails.
+
   protected ImageButton mChangeCamera;
   private ImageButton mFlash;
   private ImageButton mLocationButton;
