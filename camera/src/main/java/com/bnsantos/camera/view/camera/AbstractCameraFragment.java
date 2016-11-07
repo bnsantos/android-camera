@@ -1,14 +1,24 @@
 package com.bnsantos.camera.view.camera;
 
 import android.app.Fragment;
+import android.content.Context;
+import android.location.Criteria;
+import android.location.Location;
+import android.location.LocationManager;
 import android.media.MediaActionSound;
 import android.os.Bundle;
+import android.support.annotation.Nullable;
+import android.view.LayoutInflater;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.ImageButton;
 import android.widget.Toast;
 
 import com.bnsantos.camera.R;
+import com.bnsantos.camera.view.AutoFitTextureView;
 import com.bnsantos.camera.view.GridLines;
+
+import java.util.List;
 
 import static android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON_ALWAYS_FLASH;
 import static android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON_AUTO_FLASH;
@@ -34,14 +44,22 @@ public abstract class AbstractCameraFragment extends Fragment implements View.On
   protected static final int FOCUS_STATE_SUCCESS = 3; // Focus finishes and succeeds.
   protected static final int FOCUS_STATE_FAIL = 4; // Focus finishes and fails.
 
+  protected AutoFitTextureView mTexture;
   protected ImageButton mChangeCamera;
   private ImageButton mFlash;
   private ImageButton mLocationButton;
-  protected boolean mFlashSupported;
   private ImageButton mGridToggle;
   protected GridLines mGridLines;
   private MediaActionSound mMediaActionSound;
   protected int mZoomLevel = ZOOM_LEVEL_START;
+
+  private LocationManager mLocationManager;
+
+  @Nullable
+  @Override
+  public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
+    return inflater.inflate(R.layout.fragment_camera, container, false);
+  }
 
   @Override
   public void onViewCreated(View view, Bundle savedInstanceState) {
@@ -56,6 +74,8 @@ public abstract class AbstractCameraFragment extends Fragment implements View.On
       mLocationEnabled = savedInstanceState.getBoolean(BUNDLE_LOCATION, false);
       mShowGrid = savedInstanceState.getBoolean(BUNDLE_SHOW_GRID, false);
     }
+
+    mTexture = (AutoFitTextureView) view.findViewById(R.id.texture);
 
     view.findViewById(R.id.action).setOnClickListener(this);
     mChangeCamera = (ImageButton) view.findViewById(R.id.changeCamera);
@@ -106,8 +126,8 @@ public abstract class AbstractCameraFragment extends Fragment implements View.On
     setGridVisibility();
   }
 
-  protected void updateFlashButtonVisibility(){
-    mFlash.setVisibility(mFlashSupported?View.VISIBLE:View.GONE);
+  protected void updateFlashButtonVisibility(boolean visible){
+    mFlash.setVisibility(visible?View.VISIBLE:View.GONE);
   }
 
   protected void setLocationIcon(){
@@ -142,5 +162,21 @@ public abstract class AbstractCameraFragment extends Fragment implements View.On
       mMediaActionSound = new MediaActionSound();
     }
     mMediaActionSound.play(MediaActionSound.SHUTTER_CLICK);
+  }
+
+  @SuppressWarnings("MissingPermission")
+  protected Location getLastKnownLocation(){
+    if(mLocationEnabled) {
+      if(mLocationManager == null) {
+        mLocationManager = (LocationManager) getActivity().getSystemService(Context.LOCATION_SERVICE);
+      }
+      Criteria criteria = new Criteria();
+      criteria.setAccuracy(Criteria.ACCURACY_FINE);
+      List<String> providers = mLocationManager.getProviders(criteria, true);
+      if(providers != null && providers.size() > 0){
+        return mLocationManager.getLastKnownLocation(providers.get(0));
+      }
+    }
+    return null;
   }
 }

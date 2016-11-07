@@ -66,4 +66,8 @@
     android:layout_height="match_parent"
     android:visibility="gone"
     android:layout_toStartOf="@+id/control"/>
+  <com.bnsantos.camera.view.focusring.FocusRingView
+    android:id="@+id/focusRing"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"/>
 </RelativeLayout>

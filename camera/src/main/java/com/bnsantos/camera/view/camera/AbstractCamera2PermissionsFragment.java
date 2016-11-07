@@ -29,12 +29,6 @@ public abstract class AbstractCamera2PermissionsFragment extends AbstractCameraF
   protected static final int STATE_WAITING_NON_PRECAPTURE = 3;
   protected static final int STATE_PICTURE_TAKEN = 4;
 
-  /**
-   * Max preview width and height that is guaranteed by Camera2 API
-   */
-  protected static final int MAX_PREVIEW_WIDTH = 1920;
-  protected static final int MAX_PREVIEW_HEIGHT = 1080;
-
   protected boolean hasCameraPermission(){
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
       if (ContextCompat.checkSelfPermission(getContext(), Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {

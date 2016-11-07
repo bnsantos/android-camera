@@ -7,6 +7,7 @@ import android.view.KeyEvent;
 import android.widget.Toast;
 
 import com.bnsantos.camera.view.camera.Camera2Fragment;
+import com.bnsantos.camera.view.camera.CameraFragment;
 
 public class CameraActivity extends Activity {
 
@@ -19,8 +20,9 @@ public class CameraActivity extends Activity {
           getFragmentManager().beginTransaction()
               .replace(R.id.container, Camera2Fragment.newInstance())
               .commit();
-      }else{
-        Toast.makeText(this, "TODO", Toast.LENGTH_SHORT).show();
+      }else{getFragmentManager().beginTransaction()
+          .replace(R.id.container, CameraFragment.newInstance())
+          .commit();
       }
     }
   }
