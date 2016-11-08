@@ -4,6 +4,7 @@ package com.bnsantos.camera;
 import android.app.Activity;
 import android.graphics.ImageFormat;
 import android.graphics.Point;
+import android.graphics.Rect;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.params.MeteringRectangle;
@@ -47,6 +48,8 @@ public class Camera {
   private Size mPreviewSize;
 
   private Size mJPEGSize;
+
+  private Rect mSensorRect;
 
   @SuppressWarnings("SuspiciousNameCombination")
   @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
@@ -123,8 +126,7 @@ public class Camera {
       Boolean available = cameraCharacteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE);
       mFlashSupported = available == null ? false : available;
 
-
-
+      mSensorRect = cameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
       mCameraId = cameraId;
     }
   }
@@ -179,6 +181,14 @@ public class Camera {
     return mJPEGSize;
   }
 
+  public void setAFRegions(MeteringRectangle[] AFRegions) {
+    this.mAFRegions = AFRegions;
+  }
+
+  public void setAERegions(MeteringRectangle[] AERegions) {
+    this.mAERegions = AERegions;
+  }
+
   /**
    * Given {@code choices} of {@code Size}s supported by a camera, choose the smallest one that
    * is at least as large as the respective texture view size, and that is at most as large as the
@@ -223,6 +233,10 @@ public class Camera {
       Log.e(TAG, "Couldn't find any suitable preview size");
       return choices[0];
     }
+  }
+
+  public Rect getSensorRect() {
+    return mSensorRect;
   }
 
 

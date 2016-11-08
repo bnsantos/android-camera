@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.res.Configuration;
 import android.graphics.ImageFormat;
 import android.graphics.Matrix;
+import android.graphics.PointF;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.SurfaceTexture;
@@ -18,6 +19,7 @@ import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
+import android.hardware.camera2.params.MeteringRectangle;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.ImageReader;
 import android.os.Build;
@@ -41,15 +43,19 @@ import com.bnsantos.camera.view.focusring.FocusRing;
 
 import java.io.File;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.Locale;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
+import static android.R.attr.x;
+import static android.R.attr.y;
 import static android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON_ALWAYS_FLASH;
 import static android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON_AUTO_FLASH;
 import static android.hardware.camera2.CameraMetadata.FLASH_MODE_OFF;
+import static android.hardware.camera2.CameraMetadata.LENS_FACING_FRONT;
 
 @TargetApi(Build.VERSION_CODES.LOLLIPOP)
 public class Camera2Fragment extends AbstractCamera2PermissionsFragment implements View.OnClickListener, CameraActivity.CameraKeyListener, AutoFitTextureView.TouchEventInterface {
@@ -219,6 +225,7 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
       process(result);
     }
   };
+  private Surface surface;
 
   public static Camera2Fragment newInstance() {
     return new Camera2Fragment();
@@ -386,7 +393,7 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
       texture.setDefaultBufferSize(mCamera.getPreviewSize().getWidth(), mCamera.getPreviewSize().getHeight());
 
       // This is the output Surface we need to start preview.
-      Surface surface = new Surface(texture);
+      surface = new Surface(texture);
 
       // We set up a CaptureRequest.Builder with the output Surface.
       mPreviewRequestBuilder = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
@@ -639,14 +646,18 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
 
   @Override
   public void onFocus(final float x, final float y) {
+    MeteringRectangle[] regions = getMeteringRectangles(x, y);
+    mCamera.setAERegions(regions);
+    mCamera.setAFRegions(regions);
+
+    Log.i("BRUNO", "AERegion: " + mCamera.getAERegions()[0].toString());
+    Log.i("BRUNO", "AFRegion: " + mCamera.getAFRegions()[0].toString());
+
+    setUpPreviewRepeatingRequest();
+
     getActivity().runOnUiThread(new Runnable() {
       @Override
       public void run() {
-        /*cancelAutoFocus();
-        initializeMeteringAreas(x, y);
-        initializeFocusAreas(x, y);
-        autoFocus();*/
-
         mFocusRing.stopFocusAnimations();
         mFocusRing.startActiveFocus();
         mFocusRing.setFocusLocation(x, y);
@@ -654,49 +665,83 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
     });
   }
 
-  /*private void cancelAutoFocus() {
-    Log.v(TAG, "Cancel autofocus.");
-    // Reset the tap area before calling mListener.cancelAutofocus.
-    // Otherwise, focus mode stays at auto and the tap area passed to the
-    // driver is not reset.
-    resetTouchFocus();
-    mListener.cancelAutoFocus();
-    mState = STATE_IDLE;
-    mFocusLocked = false;
-    mHandler.removeMessages(RESET_TOUCH_FOCUS);
-  }
+  //TODO too much constants
+  @NonNull
+  private MeteringRectangle[] getMeteringRectangles(final float x, final float y) {
+    float [] coords = {x, y};
+    Matrix matrix = cameraToPreviewMatrix();
+    matrix.mapPoints(coords);
 
-  private void autoFocus() {
-    autoFocus(FOCUS_STATE_FOCUSING);
-  }
+    float focus_x = coords[0];
+    float focus_y = coords[1];
 
-  private void autoFocus(int focusingState) {
-    CameraAgent agent;
-    mCameraDevice.au
-    mListener.autoFocus();
-    mState = focusingState;
-    mHandler.removeMessages(FOCUS_RESET_TOUCH_FOCUS);
-  }
-
-  private void initializeMeteringAreas(int x, int y) {
-    if (mMeteringArea == null) {
-      mMeteringArea = new ArrayList<Camera.Area>();
-      mMeteringArea.add(new Camera.Area(new Rect(), 1));
+    int focus_size = 50;
+    Rect rect = new Rect();
+    rect.left = (int)focus_x - focus_size;
+    rect.right = (int)focus_x + focus_size;
+    rect.top = (int)focus_y - focus_size;
+    rect.bottom = (int)focus_y + focus_size;
+    if( rect.left < -1000 ) {
+      rect.left = -1000;
+      rect.right = rect.left + 2*focus_size;
     }
-
-    // Convert the coordinates to driver format.
-    mMeteringArea.get(0).rect = computeCameraRectFromPreviewCoordinates(x, y, getAERegionSizePx());
+    else if( rect.right > 1000 ) {
+      rect.right = 1000;
+      rect.left = rect.right - 2*focus_size;
+    }
+    if( rect.top < -1000 ) {
+      rect.top = -1000;
+      rect.bottom = rect.top + 2*focus_size;
+    }
+    else if( rect.bottom > 1000 ) {
+      rect.bottom = 1000;
+      rect.top = rect.bottom - 2*focus_size;
+    }
+    return new MeteringRectangle[]{new MeteringRectangle(convertRectFromCamera2(rect), 1000)};
   }
 
-  private void initializeFocusAreas(int x, int y) {
-    if (mFocusArea == null) {
-      mFocusArea = new ArrayList<Camera.Area>();
-      mFocusArea.add(new Area(new Rect(), 1));
-    }
+  private Rect convertRectFromCamera2(Rect camera2_rect) {
+    Rect sensor_rect = mCamera.getSensorRect();
+    // inverse of convertRectToCamera2()
+    double left_f = (camera2_rect.left+1000)/2000.0;
+    double top_f = (camera2_rect.top+1000)/2000.0;
+    double right_f = (camera2_rect.right+1000)/2000.0;
+    double bottom_f = (camera2_rect.bottom+1000)/2000.0;
+    int left = (int)(left_f * (sensor_rect.width()-1));
+    int right = (int)(right_f * (sensor_rect.width()-1));
+    int top = (int)(top_f * (sensor_rect.height()-1));
+    int bottom = (int)(bottom_f * (sensor_rect.height()-1));
+    left = Math.max(left, 0);
+    right = Math.max(right, 0);
+    top = Math.max(top, 0);
+    bottom = Math.max(bottom, 0);
+    left = Math.min(left, sensor_rect.width()-1);
+    right = Math.min(right, sensor_rect.width()-1);
+    top = Math.min(top, sensor_rect.height()-1);
+    bottom = Math.min(bottom, sensor_rect.height()-1);
 
-    // Convert the coordinates to driver format.
-    mFocusArea.get(0).rect = computeCameraRectFromPreviewCoordinates(x, y, getAFRegionSizePx());
-  }*/
+    Rect rect = new Rect(left, top, right, bottom);
+    return rect;
+  }
+
+  private Matrix cameraToPreviewMatrix(){
+    Matrix m = new Matrix();
+    m.reset();
+    boolean mirror = mChosenCamera == LENS_FACING_FRONT;
+    m.setScale(1, mirror ? -1 : 1);
+
+    //TODO WTF 2000f and 2f
+    // Camera driver coordinates range from (-1000, -1000) to (1000, 1000).
+    // UI coordinates range from (0, 0) to (width, height).
+    m.postRotate(mCamera.getSensorOrientation());
+    Rect croppingRegion = getCroppingRegion();
+    m.mapRect(new RectF(croppingRegion));
+    m.postScale(mTexture.getWidth() / 2000f, mTexture.getHeight() / 2000f);
+    m.postTranslate(mTexture.getWidth() / 2f, mTexture.getHeight() / 2f);
+    Matrix inverse = new Matrix();
+    m.invert(inverse);
+    return inverse;
+  }
 
   private void setUpRequestBuilder(CaptureRequest.Builder builder){
     setAEMode(builder);
@@ -744,24 +789,8 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
 
   private void setZoom(CaptureRequest.Builder builder) {
     if (mCamera.isDigitalZoomEnabled() && mZoomLevel != ZOOM_LEVEL_START) {
-      try {
-        CameraManager manager = (CameraManager) getActivity().getSystemService(Context.CAMERA_SERVICE);
-        CameraCharacteristics characteristics = manager.getCameraCharacteristics(mCamera.getCameraId());
-        Rect m = characteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
 
-        if (m != null) {
-          int minW = (int) (m.width() / mCamera.getMaxDigitalZoom());
-          int minH = (int) (m.height() / mCamera.getMaxDigitalZoom());
-          int difW = m.width() - minW;
-          int difH = m.height() - minH;
-          int cropW = difW / 100 * mZoomLevel;
-          int cropH = difH / 100 * mZoomLevel;
-
-          Rect zoom = new Rect(cropW, cropH, m.width() - cropW, m.height() - cropH);
-          builder.set(CaptureRequest.SCALER_CROP_REGION, zoom);
-        }
-      } catch (CameraAccessException e) {
-      }
+      builder.set(CaptureRequest.SCALER_CROP_REGION, getCroppingRegion());
     }
   }
 
@@ -780,5 +809,21 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
     } catch (CameraAccessException e) {
       e.printStackTrace();
     }
+  }
+
+  private Rect getCroppingRegion(){
+    Rect m = mCamera.getSensorRect();
+
+    if (m != null) {
+      int minW = (int) (m.width() / mCamera.getMaxDigitalZoom());
+      int minH = (int) (m.height() / mCamera.getMaxDigitalZoom());
+      int difW = m.width() - minW;
+      int difH = m.height() - minH;
+      int cropW = difW / 100 * mZoomLevel;
+      int cropH = difH / 100 * mZoomLevel;
+
+      return new Rect(cropW, cropH, m.width() - cropW, m.height() - cropH);
+    }
+    return null ;
   }
 }
