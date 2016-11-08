@@ -92,7 +92,7 @@ public class AutoFitTextureView extends TextureView {
 
     mScaleGestureDetector.onTouchEvent(event);
 
-    if(event.getPointerCount() == 1){
+    if(event.getPointerCount() == 1 && event.getAction() == MotionEvent.ACTION_UP){
       if(mTouchListener!=null){
         mTouchListener.onFocus(event.getX(), event.getY());
       }
