@@ -9,11 +9,12 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.SurfaceTexture;
 import android.hardware.Camera;
+import android.location.Location;
+import android.media.ExifInterface;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
 import android.util.Log;
-import android.view.Display;
 import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
@@ -104,9 +105,39 @@ public class CameraFragment extends AbstractCameraFragment implements TextureVie
           }
         }
       }
+
+      if(mLocationEnabled) {
+        try {
+          ExifInterface exifInterface = new ExifInterface(file.getAbsolutePath());
+          Location location = getLastKnownLocation();
+          exifInterface.setAttribute(ExifInterface.TAG_GPS_LATITUDE, dec2DMS(location.getLatitude()));
+          exifInterface.setAttribute(ExifInterface.TAG_GPS_LONGITUDE,dec2DMS(location.getLongitude()));
+          if (location.getLatitude() > 0)
+            exifInterface.setAttribute(ExifInterface.TAG_GPS_LATITUDE_REF, "N");
+          else
+            exifInterface.setAttribute(ExifInterface.TAG_GPS_LATITUDE_REF, "S");
+          if (location.getLongitude()>0)
+            exifInterface.setAttribute(ExifInterface.TAG_GPS_LONGITUDE_REF, "E");
+          else
+            exifInterface.setAttribute(ExifInterface.TAG_GPS_LONGITUDE_REF, "W");
+
+          exifInterface.saveAttributes();
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
+      }
     }
   };
 
+  public String dec2DMS(double coord) {
+    coord = coord > 0 ? coord : -coord;  // -105.9876543 -> 105.9876543
+    String sOut = Integer.toString((int)coord) + "/1,";   // 105/1,
+    coord = (coord % 1) * 60;         // .987654321 * 60 = 59.259258
+    sOut = sOut + Integer.toString((int)coord) + "/1,";   // 105/1,59/1,
+    coord = (coord % 1) * 60000;             // .259258 * 60000 = 15555
+    sOut = sOut + Integer.toString((int)coord) + "/1000";   // 105/1,59/1,15555/1000
+    return sOut;
+  }
   private Camera.ShutterCallback mShutterCallback = new Camera.ShutterCallback() {
     @Override
     public void onShutter() { }

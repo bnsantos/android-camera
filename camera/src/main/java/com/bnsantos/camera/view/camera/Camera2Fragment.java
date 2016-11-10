@@ -42,20 +42,15 @@ import com.bnsantos.camera.R;
 import com.bnsantos.camera.view.AutoFitTextureView;
 
 import java.io.File;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
-import java.util.Locale;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
-import static android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON_ALWAYS_FLASH;
-import static android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON_AUTO_FLASH;
-import static android.hardware.camera2.CameraMetadata.FLASH_MODE_OFF;
 import static android.hardware.camera2.CameraMetadata.LENS_FACING_FRONT;
 import static com.bnsantos.camera.CameraActivity.DATE_FORMAT;
 import static com.bnsantos.camera.CameraActivity.FOLDER;

@@ -189,8 +189,11 @@ public abstract class AbstractCameraFragment extends Fragment implements View.On
       Criteria criteria = new Criteria();
       criteria.setAccuracy(Criteria.ACCURACY_FINE);
       List<String> providers = mLocationManager.getProviders(criteria, true);
-      if(providers != null && providers.size() > 0){
-        return mLocationManager.getLastKnownLocation(providers.get(0));
+      for (String provider : providers) {
+        Location lastKnownLocation = mLocationManager.getLastKnownLocation(provider);
+        if(lastKnownLocation != null){
+          return lastKnownLocation;
+        }
       }
     }
     return null;
