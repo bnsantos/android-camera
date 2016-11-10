@@ -5,7 +5,9 @@ import android.app.Activity;
 import android.content.Intent;
 import android.media.Image;
 import android.net.Uri;
+import android.os.Build;
 import android.provider.MediaStore;
+import android.support.annotation.RequiresApi;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -24,6 +26,7 @@ public class ImageSaver implements Runnable {
     this.mFile = file;
   }
 
+  @RequiresApi(api = Build.VERSION_CODES.KITKAT)
   @Override
   public void run() {
     ByteBuffer buffer = mImage.getPlanes()[0].getBuffer();

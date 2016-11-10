@@ -9,7 +9,12 @@ import android.widget.Toast;
 import com.bnsantos.camera.view.camera.Camera2Fragment;
 import com.bnsantos.camera.view.camera.CameraFragment;
 
+import java.text.SimpleDateFormat;
+import java.util.Locale;
+
 public class CameraActivity extends Activity {
+  public static final String FOLDER = "Simple Camera";
+  public static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault());
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
@@ -18,7 +23,7 @@ public class CameraActivity extends Activity {
     if(savedInstanceState == null){
       if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
           getFragmentManager().beginTransaction()
-              .replace(R.id.container, Camera2Fragment.newInstance())
+              .replace(R.id.container, CameraFragment.newInstance())
               .commit();
       }else{getFragmentManager().beginTransaction()
           .replace(R.id.container, CameraFragment.newInstance())

@@ -6,7 +6,7 @@ import android.content.Context;
 import android.content.res.Configuration;
 import android.graphics.ImageFormat;
 import android.graphics.Matrix;
-import android.graphics.PointF;
+import android.graphics.Point;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.SurfaceTexture;
@@ -28,44 +28,43 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.support.annotation.NonNull;
+import android.support.annotation.RequiresApi;
 import android.util.Log;
+import android.util.Size;
 import android.util.SparseIntArray;
 import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
 
-import com.bnsantos.camera.Camera;
 import com.bnsantos.camera.CameraActivity;
 import com.bnsantos.camera.ImageSaver;
 import com.bnsantos.camera.R;
 import com.bnsantos.camera.view.AutoFitTextureView;
-import com.bnsantos.camera.view.focusring.FocusRing;
 
 import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
-import static android.R.attr.x;
-import static android.R.attr.y;
 import static android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON_ALWAYS_FLASH;
 import static android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON_AUTO_FLASH;
 import static android.hardware.camera2.CameraMetadata.FLASH_MODE_OFF;
 import static android.hardware.camera2.CameraMetadata.LENS_FACING_FRONT;
+import static com.bnsantos.camera.CameraActivity.DATE_FORMAT;
+import static com.bnsantos.camera.CameraActivity.FOLDER;
 
 @TargetApi(Build.VERSION_CODES.LOLLIPOP)
 public class Camera2Fragment extends AbstractCamera2PermissionsFragment implements View.OnClickListener, CameraActivity.CameraKeyListener, AutoFitTextureView.TouchEventInterface {
   private static final String TAG = Camera2Fragment.class.getSimpleName();
 
   private static final SparseIntArray ORIENTATIONS = new SparseIntArray();
-  private static final String FOLDER = "Simple Camera";
-  private static final String BUNDLE_CHOSEN_CAMERA = "bundle_chosen_camera";
-
-  private FocusRing mFocusRing;
 
   static {
     ORIENTATIONS.append(Surface.ROTATION_0, 90);
@@ -74,7 +73,7 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
     ORIENTATIONS.append(Surface.ROTATION_270, 180);
   }
 
-  private Camera mCamera;
+  private CameraInfo mCameraInfo;
   private CameraDevice mCameraDevice;
   private int mChosenCamera = CameraMetadata.LENS_FACING_BACK;
 
@@ -136,7 +135,6 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
   private Handler mBackgroundHandler;
   private HandlerThread mBackgroundThread;
 
-  private SimpleDateFormat mDateFormat = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault());
   private File mFile;
 
   private ImageReader mImageReader;
@@ -159,7 +157,7 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
         Log.i(TAG, "Creating folders: " + directory.mkdirs() );
       }
 
-      String timeStamp = mDateFormat.format(new Date());
+      String timeStamp = DATE_FORMAT.format(new Date());
       mFile = new File(directory, "pic_"+timeStamp+".jpg");
       mBackgroundHandler.post(new ImageSaver(getActivity(), reader.acquireNextImage(), mFile));
     }
@@ -239,8 +237,6 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
         mChosenCamera = savedInstanceState.getInt(BUNDLE_CHOSEN_CAMERA);
       }
     }
-    mTexture.setAreaChangedListener(mGridLines);
-    mFocusRing = (FocusRing) view.findViewById(R.id.focusRing);
     updateFlashModeIcon();
   }
 
@@ -314,10 +310,10 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
         if (!mCameraOpenCloseLock.tryAcquire(2500, TimeUnit.MILLISECONDS)) {
           throw new RuntimeException("Time out waiting to lock camera opening.");
         }
-        if (mCamera == null || mCamera.getCameraId() == null) {
+        if (mCameraInfo == null || mCameraInfo.mCameraId == null) {
           throw new RuntimeException("No camera found.");
         }
-        manager.openCamera(mCamera.getCameraId(), mStateCallback, mBackgroundHandler);
+        manager.openCamera(mCameraInfo.mCameraId, mStateCallback, mBackgroundHandler);
       } catch (CameraAccessException e) {
         e.printStackTrace();
       } catch (InterruptedException e) {
@@ -350,26 +346,26 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
           continue;
         }
 
-        mCamera = new Camera(cameraId, characteristics, activity, width, height);
+        mCameraInfo = new CameraInfo(cameraId, characteristics, width, height);
 
-        if(mCamera.isDigitalZoomEnabled()) {
+        if(mCameraInfo.isDigitalZoomEnabled()) {
           mTexture.setTouchListener(this);
         }else{
           mTexture.setTouchListener(null);
         }
 
-        mImageReader = ImageReader.newInstance(mCamera.getJPEGSize().getWidth(), mCamera.getJPEGSize().getHeight(), ImageFormat.JPEG, /*maxImages*/2);
+        mImageReader = ImageReader.newInstance(mCameraInfo.mJPEGSize.getWidth(), mCameraInfo.mJPEGSize.getHeight(), ImageFormat.JPEG, /*maxImages*/2);
         mImageReader.setOnImageAvailableListener(mOnImageAvailableListener, mBackgroundHandler);
 
         // We fit the aspect ratio of TextureView to the size of preview we picked.
         int orientation = getResources().getConfiguration().orientation;
         if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
-          mTexture.setAspectRatio(mCamera.getPreviewSize().getWidth(), mCamera.getPreviewSize().getHeight());
+          mTexture.setAspectRatio(mCameraInfo.mPreviewSize.getWidth(), mCameraInfo.mPreviewSize.getHeight());
         } else {
-          mTexture.setAspectRatio(mCamera.getPreviewSize().getHeight(), mCamera.getPreviewSize().getWidth());
+          mTexture.setAspectRatio(mCameraInfo.mPreviewSize.getHeight(), mCameraInfo.mPreviewSize.getWidth());
         }
 
-        updateFlashButtonVisibility(mCamera.isFlashSupported());
+        updateFlashButtonVisibility(mCameraInfo.mFlashSupported);
         return;
       }
     } catch (CameraAccessException e) {
@@ -390,7 +386,7 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
       assert texture != null;
 
       // We configure the size of default buffer to be the size of camera preview we want.
-      texture.setDefaultBufferSize(mCamera.getPreviewSize().getWidth(), mCamera.getPreviewSize().getHeight());
+      texture.setDefaultBufferSize(mCameraInfo.mPreviewSize.getWidth(), mCameraInfo.mPreviewSize.getHeight());
 
       // This is the output Surface we need to start preview.
       surface = new Surface(texture);
@@ -435,21 +431,21 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
    */
   private void configureTransform(int viewWidth, int viewHeight) {
     Activity activity = getActivity();
-    if (null == mTexture || null == mCamera.getPreviewSize() || null == activity) {
+    if (null == mTexture || null == mCameraInfo.mPreviewSize || null == activity) {
       return;
     }
     int rotation = activity.getWindowManager().getDefaultDisplay().getRotation();
     Matrix matrix = new Matrix();
     RectF viewRect = new RectF(0, 0, viewWidth, viewHeight);
-    RectF bufferRect = new RectF(0, 0, mCamera.getPreviewSize().getHeight(), mCamera.getPreviewSize().getWidth());
+    RectF bufferRect = new RectF(0, 0, mCameraInfo.mPreviewSize.getHeight(), mCameraInfo.mPreviewSize.getWidth());
     float centerX = viewRect.centerX();
     float centerY = viewRect.centerY();
     if (Surface.ROTATION_90 == rotation || Surface.ROTATION_270 == rotation) {
       bufferRect.offset(centerX - bufferRect.centerX(), centerY - bufferRect.centerY());
       matrix.setRectToRect(viewRect, bufferRect, Matrix.ScaleToFit.FILL);
       float scale = Math.max(
-          (float) viewHeight / mCamera.getPreviewSize().getHeight(),
-          (float) viewWidth / mCamera.getPreviewSize().getWidth());
+          (float) viewHeight / mCameraInfo.mPreviewSize.getHeight(),
+          (float) viewWidth / mCameraInfo.mPreviewSize.getWidth());
       matrix.postScale(scale, scale, centerX, centerY);
       matrix.postRotate(90 * (rotation - 2), centerX, centerY);
     } else if (Surface.ROTATION_180 == rotation) {
@@ -474,25 +470,15 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
     // We have to take that into account and rotate JPEG properly.
     // For devices with orientation of 90, we simply return our mapping from ORIENTATIONS.
     // For devices with orientation of 270, we need to rotate the JPEG 180 degrees.
-    return (ORIENTATIONS.get(rotation) + mCamera.getSensorOrientation() + 270) % 360;
+    return (ORIENTATIONS.get(rotation) + mCameraInfo.mSensorOrientation + 270) % 360;
   }
 
   @Override
   protected void changeFlashMode(){
-    switch (mFlashMode){
-      case CONTROL_AE_MODE_ON_AUTO_FLASH:
-        mFlashMode = CONTROL_AE_MODE_ON_ALWAYS_FLASH;
-        break;
-      case CONTROL_AE_MODE_ON_ALWAYS_FLASH:
-        mFlashMode = FLASH_MODE_OFF;
-        break;
-      case FLASH_MODE_OFF:
-        mFlashMode = CONTROL_AE_MODE_ON_AUTO_FLASH;
-        break;
+    if(mCameraInfo.mFlashSupported) {
+      super.changeFlashMode();
+      setUpPreviewRepeatingRequest();
     }
-
-    updateFlashModeIcon();
-    setUpPreviewRepeatingRequest();
   }
 
   /*
@@ -632,9 +618,9 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
 
   @Override
   public void onZoom(float scaleFactor) {
-    if(mCamera.isDigitalZoomEnabled()){
+    if(mCameraInfo.isDigitalZoomEnabled()){
       if (scaleFactor > 1.0f) {
-        if (mZoomLevel < mCamera.getMaxDigitalZoom())
+        if (mZoomLevel < mCameraInfo.mMaxDigitalZoom)
           mZoomLevel++;
       } else {
         if (mZoomLevel > 1)
@@ -646,23 +632,14 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
 
   @Override
   public void onFocus(final float x, final float y) {
-    MeteringRectangle[] regions = getMeteringRectangles(x, y);
-    mCamera.setAERegions(regions);
-    mCamera.setAFRegions(regions);
+    if(mCameraInfo.mMaxAFRegions > 0) {
 
-    Log.i("BRUNO", "AERegion: " + mCamera.getAERegions()[0].toString());
-    Log.i("BRUNO", "AFRegion: " + mCamera.getAFRegions()[0].toString());
+      MeteringRectangle[] regions = getMeteringRectangles(x, y);
+      mCameraInfo.mAERegions = regions;
+      mCameraInfo.mAFRegions = regions;
 
-    setUpPreviewRepeatingRequest();
-
-    getActivity().runOnUiThread(new Runnable() {
-      @Override
-      public void run() {
-        mFocusRing.stopFocusAnimations();
-        mFocusRing.startActiveFocus();
-        mFocusRing.setFocusLocation(x, y);
-      }
-    });
+      playFocusRingAnimation(x, y);
+    }
   }
 
   //TODO too much constants
@@ -701,7 +678,7 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
   }
 
   private Rect convertRectFromCamera2(Rect camera2_rect) {
-    Rect sensor_rect = mCamera.getSensorRect();
+    Rect sensor_rect = mCameraInfo.mSensorRect;
     // inverse of convertRectToCamera2()
     double left_f = (camera2_rect.left+1000)/2000.0;
     double top_f = (camera2_rect.top+1000)/2000.0;
@@ -733,7 +710,7 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
     //TODO WTF 2000f and 2f
     // Camera driver coordinates range from (-1000, -1000) to (1000, 1000).
     // UI coordinates range from (0, 0) to (width, height).
-    m.postRotate(mCamera.getSensorOrientation());
+    m.postRotate(mCameraInfo.mSensorOrientation);
     Rect croppingRegion = getCroppingRegion();
     m.mapRect(new RectF(croppingRegion));
     m.postScale(mTexture.getWidth() / 2000f, mTexture.getHeight() / 2000f);
@@ -754,11 +731,11 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
 
   private void setAEMode(CaptureRequest.Builder builder){
     switch (mFlashMode){
-      case CONTROL_AE_MODE_ON_ALWAYS_FLASH:
+      case FLASH_ON:
         builder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON_ALWAYS_FLASH);
         builder.set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_OFF);
         break;
-      case CONTROL_AE_MODE_ON_AUTO_FLASH:
+      case FLASH_AUTO:
         builder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON_AUTO_FLASH);
         builder.set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_OFF);
         break;
@@ -776,19 +753,19 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
   }
 
   private void setAERegions(CaptureRequest.Builder builder) {
-    if(mCamera.hasAERegions()){
-      builder.set(CaptureRequest.CONTROL_AE_REGIONS, mCamera.getAERegions());
+    if(mCameraInfo.hasAERegions()){
+      builder.set(CaptureRequest.CONTROL_AE_REGIONS, mCameraInfo.mAERegions);
     }
   }
 
   private void setAFRegions(CaptureRequest.Builder builder) {
-    if(mCamera.hasAFRegions()){
-      builder.set(CaptureRequest.CONTROL_AF_REGIONS, mCamera.getAFRegions());
+    if(mCameraInfo.hasAFRegions()){
+      builder.set(CaptureRequest.CONTROL_AF_REGIONS, mCameraInfo.mAFRegions);
     }
   }
 
   private void setZoom(CaptureRequest.Builder builder) {
-    if (mCamera.isDigitalZoomEnabled() && mZoomLevel != ZOOM_LEVEL_START) {
+    if (mCameraInfo.isDigitalZoomEnabled() && mZoomLevel != ZOOM_LEVEL_START) {
 
       builder.set(CaptureRequest.SCALER_CROP_REGION, getCroppingRegion());
     }
@@ -812,11 +789,11 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
   }
 
   private Rect getCroppingRegion(){
-    Rect m = mCamera.getSensorRect();
+    Rect m = mCameraInfo.mSensorRect;
 
     if (m != null) {
-      int minW = (int) (m.width() / mCamera.getMaxDigitalZoom());
-      int minH = (int) (m.height() / mCamera.getMaxDigitalZoom());
+      int minW = (int) (m.width() / mCameraInfo.mMaxDigitalZoom);
+      int minH = (int) (m.height() / mCameraInfo.mMaxDigitalZoom);
       int difW = m.width() - minW;
       int difH = m.height() - minH;
       int cropW = difW / 100 * mZoomLevel;
@@ -825,5 +802,179 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
       return new Rect(cropW, cropH, m.width() - cropW, m.height() - cropH);
     }
     return null ;
+  }
+
+  /**
+   * Max preview width and height that is guaranteed by Camera2 API
+   */
+  private static final int MAX_PREVIEW_WIDTH = 1920;
+  private static final int MAX_PREVIEW_HEIGHT = 1080;
+
+  private class CameraInfo{
+    String mCameraId;
+    boolean mFlashSupported;
+    Integer mMaxAFRegions;
+    Integer mMaxAERegions;
+    Float mMaxDigitalZoom;
+    MeteringRectangle[] mAFRegions = null; // no need for has_scalar_crop_region, as we can set to null instead
+    MeteringRectangle [] mAERegions = null; // no need for has_scalar_crop_region, as we can set to null instead
+    /**
+     * Orientation of the camera sensor
+     */
+    int mSensorOrientation;
+
+    Size mPreviewSize;
+    Size mJPEGSize;
+
+    Rect mSensorRect;
+
+    public CameraInfo(String cameraId, CameraCharacteristics cameraCharacteristics, int width, int height){
+      if(cameraCharacteristics != null) {
+        StreamConfigurationMap map = cameraCharacteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+        if (map == null) {
+          return;
+        }
+
+        mMaxAFRegions = cameraCharacteristics.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AF);
+        mMaxAERegions = cameraCharacteristics.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AE);
+
+        mMaxDigitalZoom = cameraCharacteristics.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM);
+        if(mMaxDigitalZoom != null){
+          mMaxDigitalZoom *= 5;//TODO
+        }
+
+        // Find out if we need to swap dimension to get the preview size relative to sensor
+        // coordinate.
+        int displayRotation = getActivity().getWindowManager().getDefaultDisplay().getRotation();
+        //noinspection ConstantConditions
+        mSensorOrientation = cameraCharacteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
+        boolean swappedDimensions = false;
+        switch (displayRotation) {
+          case Surface.ROTATION_0:
+          case Surface.ROTATION_180:
+            if (mSensorOrientation == 90 || mSensorOrientation == 270) {
+              swappedDimensions = true;
+            }
+            break;
+          case Surface.ROTATION_90:
+          case Surface.ROTATION_270:
+            if (mSensorOrientation == 0 || mSensorOrientation == 180) {
+              swappedDimensions = true;
+            }
+            break;
+          default:
+            Log.e(TAG, "Display rotation is invalid: " + displayRotation);
+        }
+
+        Point displaySize = new Point();
+        getActivity().getWindowManager().getDefaultDisplay().getSize(displaySize);
+        int rotatedPreviewWidth = width;
+        int rotatedPreviewHeight = height;
+        int maxPreviewWidth = displaySize.x;
+        int maxPreviewHeight = displaySize.y;
+
+        if (swappedDimensions) {
+          rotatedPreviewWidth = height;
+          rotatedPreviewHeight = width;
+          maxPreviewWidth = displaySize.y;
+          maxPreviewHeight = displaySize.x;
+        }
+
+        if (maxPreviewWidth > MAX_PREVIEW_WIDTH) {
+          maxPreviewWidth = MAX_PREVIEW_WIDTH;
+        }
+
+        if (maxPreviewHeight > MAX_PREVIEW_HEIGHT) {
+          maxPreviewHeight = MAX_PREVIEW_HEIGHT;
+        }
+
+        // For still image captures, we use the largest available size.
+        // TODO JPEG output image size
+        mJPEGSize = Collections.max(Arrays.asList(map.getOutputSizes(ImageFormat.JPEG)), new CompareSizesByArea());
+
+        // Danger, W.R.! Attempting to use too large a preview size could  exceed the camera
+        // bus' bandwidth limitation, resulting in gorgeous previews but the storage of
+        // garbage capture data.
+        mPreviewSize = chooseOptimalSize(map.getOutputSizes(SurfaceTexture.class), rotatedPreviewWidth, rotatedPreviewHeight, maxPreviewWidth, maxPreviewHeight, mJPEGSize);
+
+        // Check if the flash is supported.
+        Boolean available = cameraCharacteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE);
+        mFlashSupported = available == null ? false : available;
+
+        mSensorRect = cameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+        mCameraId = cameraId;
+      }
+    }
+
+    public boolean isDigitalZoomEnabled() {
+      return mMaxDigitalZoom != null && mMaxDigitalZoom >0.0f;
+    }
+
+    public boolean hasAERegions(){
+      return mMaxAERegions != null && mMaxAERegions > 0 && mAERegions != null;
+    }
+
+    public boolean hasAFRegions(){
+      return mMaxAFRegions != null && mMaxAFRegions > 0 && mAFRegions != null;
+    }
+  }
+
+
+  /**
+   * Given {@code choices} of {@code Size}s supported by a camera, choose the smallest one that
+   * is at least as large as the respective texture view size, and that is at most as large as the
+   * respective max size, and whose aspect ratio matches with the specified value. If such size
+   * doesn't exist, choose the largest one that is at most as large as the respective max size,
+   * and whose aspect ratio matches with the specified value.
+   *
+   * @param choices           The list of sizes that the camera supports for the intended output
+   *                          class
+   * @param textureViewWidth  The width of the texture view relative to sensor coordinate
+   * @param textureViewHeight The height of the texture view relative to sensor coordinate
+   * @param maxWidth          The maximum width that can be chosen
+   * @param maxHeight         The maximum height that can be chosen
+   * @param aspectRatio       The aspect ratio
+   * @return The optimal {@code Size}, or an arbitrary one if none were big enough
+   */
+  @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
+  private static Size chooseOptimalSize(Size[] choices, int textureViewWidth, int textureViewHeight, int maxWidth, int maxHeight, Size aspectRatio) {
+    // Collect the supported resolutions that are at least as big as the preview Surface
+    List<Size> bigEnough = new ArrayList<>();
+    // Collect the supported resolutions that are smaller than the preview Surface
+    List<Size> notBigEnough = new ArrayList<>();
+    int w = aspectRatio.getWidth();
+    int h = aspectRatio.getHeight();
+    for (Size option : choices) {
+      if (option.getWidth() <= maxWidth && option.getHeight() <= maxHeight && option.getHeight() == option.getWidth() * h / w) {
+        if (option.getWidth() >= textureViewWidth && option.getHeight() >= textureViewHeight) {
+          bigEnough.add(option);
+        } else {
+          notBigEnough.add(option);
+        }
+      }
+    }
+
+    // Pick the smallest of those big enough. If there is no one big enough, pick the
+    // largest of those not big enough.
+    if (bigEnough.size() > 0) {
+      return Collections.min(bigEnough, new CompareSizesByArea());
+    } else if (notBigEnough.size() > 0) {
+      return Collections.max(notBigEnough, new CompareSizesByArea());
+    } else {
+      Log.e(TAG, "Couldn't find any suitable preview size");
+      return choices[0];
+    }
+  }
+
+  /**
+   * Compares two {@code Size}s based on their areas.
+   */
+  private static class CompareSizesByArea implements Comparator<Size> {
+    @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
+    @Override
+    public int compare(Size lhs, Size rhs) {
+      // We cast here to ensure the multiplications won't overflow
+      return Long.signum((long) lhs.getWidth() * lhs.getHeight() - (long) rhs.getWidth() * rhs.getHeight());
+    }
   }
 }

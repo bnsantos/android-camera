@@ -17,6 +17,7 @@ import android.widget.Toast;
 import com.bnsantos.camera.R;
 import com.bnsantos.camera.view.AutoFitTextureView;
 import com.bnsantos.camera.view.GridLines;
+import com.bnsantos.camera.view.focusring.FocusRing;
 
 import java.util.List;
 
@@ -29,20 +30,17 @@ public abstract class AbstractCameraFragment extends Fragment implements View.On
   private static final String BUNDLE_LOCATION = "bundle_location";
   private static final String BUNDLE_SHOW_GRID = "bundle_show_grid";
   private static final String BUNDLE_ZOOM_LEVEL = "bundle_zoom_level";
+  protected static final String BUNDLE_CHOSEN_CAMERA = "bundle_chosen_camera";
 
-  protected int mFlashMode = CONTROL_AE_MODE_ON_AUTO_FLASH;
+  protected static final int FLASH_AUTO = 1;
+  protected static final int FLASH_ON = 2;
+  protected static final int FLASH_OFF = 3;
+
+  protected int mFlashMode = FLASH_AUTO;
   protected boolean mLocationEnabled;
   protected boolean mShowGrid = false;
 
   protected static final int ZOOM_LEVEL_START = 1;
-
-  protected int mFocusState = FOCUS_STATE_IDLE;
-  protected static final int FOCUS_STATE_IDLE = 0; // Focus is not active.
-  protected static final int FOCUS_STATE_FOCUSING = 1; // Focus is in progress.
-  // Focus is in progress and the camera should take a picture after focus finishes.
-  protected static final int FOCUS_STATE_FOCUSING_SNAP_ON_FINISH = 2;
-  protected static final int FOCUS_STATE_SUCCESS = 3; // Focus finishes and succeeds.
-  protected static final int FOCUS_STATE_FAIL = 4; // Focus finishes and fails.
 
   protected AutoFitTextureView mTexture;
   protected ImageButton mChangeCamera;
@@ -54,6 +52,7 @@ public abstract class AbstractCameraFragment extends Fragment implements View.On
   protected int mZoomLevel = ZOOM_LEVEL_START;
 
   private LocationManager mLocationManager;
+  private FocusRing mFocusRing;
 
   @Nullable
   @Override
@@ -88,6 +87,8 @@ public abstract class AbstractCameraFragment extends Fragment implements View.On
     mGridLines = (GridLines) view.findViewById(R.id.gridLines);
     mGridToggle = (ImageButton) view.findViewById(R.id.gridToggle);
     mGridToggle.setOnClickListener(this);
+    mTexture.setAreaChangedListener(mGridLines);
+    mFocusRing = (FocusRing) view.findViewById(R.id.focusRing);
   }
 
   @Override
@@ -108,6 +109,7 @@ public abstract class AbstractCameraFragment extends Fragment implements View.On
       takePicture();
     }else if(id == R.id.flash){
       changeFlashMode();
+      updateFlashModeIcon();
     }else if(id == R.id.location){
       toggleLocation();
     }else if(id == R.id.gridToggle){
@@ -119,7 +121,6 @@ public abstract class AbstractCameraFragment extends Fragment implements View.On
 
   protected abstract void changeCamera();
   protected abstract void takePicture();
-  protected abstract void changeFlashMode();
   protected abstract void toggleLocation();
   private void toggleGridLines(){
     mShowGrid = !mShowGrid;
@@ -143,15 +144,30 @@ public abstract class AbstractCameraFragment extends Fragment implements View.On
     mGridToggle.setImageResource(mShowGrid?R.drawable.ic_grid_on_white_24dp:R.drawable.ic_grid_off_white_24dp);
   }
 
+
+  protected void changeFlashMode(){
+    switch (mFlashMode) {
+      case FLASH_AUTO:
+        mFlashMode = FLASH_ON;
+        break;
+      case FLASH_ON:
+        mFlashMode = FLASH_OFF;
+        break;
+      case FLASH_OFF:
+        mFlashMode = FLASH_AUTO;
+        break;
+    }
+  }
+
   protected void updateFlashModeIcon(){
     switch (mFlashMode){
-      case CONTROL_AE_MODE_ON_AUTO_FLASH:
+      case FLASH_AUTO:
         mFlash.setImageResource(R.drawable.ic_flash_auto_white_24dp);
         break;
-      case CONTROL_AE_MODE_ON_ALWAYS_FLASH:
+      case FLASH_ON:
         mFlash.setImageResource(R.drawable.ic_flash_on_white_24dp);
         break;
-      case FLASH_MODE_OFF:
+      case FLASH_OFF:
         mFlash.setImageResource(R.drawable.ic_flash_off_white_24dp);
         break;
     }
@@ -178,5 +194,16 @@ public abstract class AbstractCameraFragment extends Fragment implements View.On
       }
     }
     return null;
+  }
+
+  protected void playFocusRingAnimation(final float x, final float y){
+    getActivity().runOnUiThread(new Runnable() {
+      @Override
+      public void run() {
+        mFocusRing.stopFocusAnimations();
+        mFocusRing.startActiveFocus();
+        mFocusRing.setFocusLocation(x, y);
+      }
+    });
   }
 }
