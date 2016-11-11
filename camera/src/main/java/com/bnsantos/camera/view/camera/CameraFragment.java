@@ -10,7 +10,9 @@ import android.graphics.RectF;
 import android.graphics.SurfaceTexture;
 import android.hardware.Camera;
 import android.location.Location;
+import android.media.CamcorderProfile;
 import android.media.ExifInterface;
+import android.media.MediaRecorder;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
@@ -32,6 +34,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
+import static android.R.attr.bitmap;
 import static com.bnsantos.camera.CameraActivity.DATE_FORMAT;
 import static com.bnsantos.camera.CameraActivity.FOLDER;
 
@@ -43,6 +46,7 @@ public class CameraFragment extends AbstractCameraFragment implements TextureVie
 
   private int mChosenCamera = Camera.CameraInfo.CAMERA_FACING_BACK;
   protected boolean mTextureReady;
+  private MediaRecorder mMediaRecorder;
 
   public static Bitmap toBitmap(byte[] data) {
     return BitmapFactory.decodeByteArray(data , 0, data.length);
@@ -54,19 +58,30 @@ public class CameraFragment extends AbstractCameraFragment implements TextureVie
     return Bitmap.createBitmap(in, 0, 0, in.getWidth(), in.getHeight(), mat, true);
   }
 
+  protected File createFile(int type){
+     /*
+        Creating folder
+       */
+    File directory = Environment.getExternalStoragePublicDirectory(FOLDER);
+    if(!directory.exists()){
+      Log.i(TAG, "Creating folders: " + directory.mkdirs() );
+    }
+
+    String timeStamp = DATE_FORMAT.format(new Date());
+    if(type == FILE_JPEG) {
+      return new File(directory, "pic_" + timeStamp + ".jpg");
+    }else if(type == FILE_MP4){
+      return new File(directory, "vid_" + timeStamp + ".mp4");
+    }else{
+      return new File(directory, "file_" + timeStamp);
+    }
+  }
+
   private Camera.PictureCallback mPictureCallback = new Camera.PictureCallback() {
     @Override
     public void onPictureTaken(byte[] data, Camera camera) {
       //Resuming preview
       mCamera.startPreview();
-
-      /*
-        Creating folder
-       */
-      File directory = Environment.getExternalStoragePublicDirectory(FOLDER);
-      if(!directory.exists()){
-        Log.i(TAG, "Creating folders: " + directory.mkdirs() );
-      }
 
       /*
         "Exif" rotation
@@ -81,8 +96,8 @@ public class CameraFragment extends AbstractCameraFragment implements TextureVie
       ByteArrayOutputStream bos = new ByteArrayOutputStream();
       bitmap.compress(Bitmap.CompressFormat.JPEG, 100, bos);
 
-      String timeStamp = DATE_FORMAT.format(new Date());
-      File file = new File(directory, "pic_"+timeStamp+".jpg");
+      File file = createFile(FILE_JPEG);
+
       FileOutputStream fos = null;
       try {
         fos = new FileOutputStream(file);
@@ -110,18 +125,20 @@ public class CameraFragment extends AbstractCameraFragment implements TextureVie
         try {
           ExifInterface exifInterface = new ExifInterface(file.getAbsolutePath());
           Location location = getLastKnownLocation();
-          exifInterface.setAttribute(ExifInterface.TAG_GPS_LATITUDE, dec2DMS(location.getLatitude()));
-          exifInterface.setAttribute(ExifInterface.TAG_GPS_LONGITUDE,dec2DMS(location.getLongitude()));
-          if (location.getLatitude() > 0)
-            exifInterface.setAttribute(ExifInterface.TAG_GPS_LATITUDE_REF, "N");
-          else
-            exifInterface.setAttribute(ExifInterface.TAG_GPS_LATITUDE_REF, "S");
-          if (location.getLongitude()>0)
-            exifInterface.setAttribute(ExifInterface.TAG_GPS_LONGITUDE_REF, "E");
-          else
-            exifInterface.setAttribute(ExifInterface.TAG_GPS_LONGITUDE_REF, "W");
+          if(location != null) {
+            exifInterface.setAttribute(ExifInterface.TAG_GPS_LATITUDE, dec2DMS(location.getLatitude()));
+            exifInterface.setAttribute(ExifInterface.TAG_GPS_LONGITUDE, dec2DMS(location.getLongitude()));
+            if (location.getLatitude() > 0)
+              exifInterface.setAttribute(ExifInterface.TAG_GPS_LATITUDE_REF, "N");
+            else
+              exifInterface.setAttribute(ExifInterface.TAG_GPS_LATITUDE_REF, "S");
+            if (location.getLongitude() > 0)
+              exifInterface.setAttribute(ExifInterface.TAG_GPS_LONGITUDE_REF, "E");
+            else
+              exifInterface.setAttribute(ExifInterface.TAG_GPS_LONGITUDE_REF, "W");
 
-          exifInterface.saveAttributes();
+            exifInterface.saveAttributes();
+          }
         } catch (IOException e) {
           e.printStackTrace();
         }
@@ -171,7 +188,7 @@ public class CameraFragment extends AbstractCameraFragment implements TextureVie
       Camera.getCameraInfo(i, info);
       if(info.facing == mChosenCamera){
         mCamera = Camera.open(i);
-        mCameraInfo = new CameraInfo(i, info, mCamera.getParameters());
+        mCameraInfo = new CameraInfo(i, info);
         updateFlashButtonVisibility(mCameraInfo.mFlashSupported);
         try {
           int orientation = getResources().getConfiguration().orientation;
@@ -193,8 +210,9 @@ public class CameraFragment extends AbstractCameraFragment implements TextureVie
     }
   }
 
-  private void releaseCamera() {
+  private synchronized void releaseCamera() {
     if (mCamera != null) {
+      mIsRecording = false;
       mCamera.release();
       mCamera = null;
     }
@@ -253,6 +271,7 @@ public class CameraFragment extends AbstractCameraFragment implements TextureVie
   public void onPause() {
     super.onPause();
     releaseCamera();
+    releaseMediaRecorder();
   }
 
   @Override
@@ -263,7 +282,15 @@ public class CameraFragment extends AbstractCameraFragment implements TextureVie
 
   @Override
   public void onSurfaceTextureSizeChanged(SurfaceTexture surfaceTexture, int i, int i1) {
+      /*if(mPreviewSize.height > mPreviewSize.width) {
+        mParameters.setPictureSize(mPreviewSize.height, mPreviewSize.width);
+      }else{
+        mParameters.setPictureSize(mPreviewSize.width, mPreviewSize.height);
+      }*/
 
+    mCameraInfo.mParameters.setPreviewSize(mCameraInfo.mPreviewSize.width, mCameraInfo.mPreviewSize.height);
+    mCamera.setParameters(mCameraInfo.mParameters);
+    mCamera.startPreview();
   }
 
   @Override
@@ -370,7 +397,7 @@ public class CameraFragment extends AbstractCameraFragment implements TextureVie
 
   @Override
   public void onAutoFocus(boolean b, Camera camera) {
-    Log.i("BRUNO", "Auto focus: " +b);
+    Log.i(TAG, "Auto focus: " +b);
   }
 
   private class CameraInfo{
@@ -387,13 +414,14 @@ public class CameraFragment extends AbstractCameraFragment implements TextureVie
     Camera.Parameters mParameters;
     private final List<String> mSupportedFlashModes;
 
-    @SuppressWarnings("SuspiciousNameCombination")
-    public CameraInfo(int cameraId, Camera.CameraInfo info, Camera.Parameters parameters) {
+    public CameraInfo(int cameraId, Camera.CameraInfo info) {
       mCameraId = cameraId;
-      mPreviewSize = parameters.getPreviewSize();
-      mMaxDigitalZoom = parameters.getMaxZoom();
-      mMaxAERegions = parameters.getMaxNumMeteringAreas();
-      mMaxAFRegions = parameters.getMaxNumFocusAreas();
+      mParameters = mCamera.getParameters();
+
+      mPreviewSize = mParameters.getPreviewSize();
+      mMaxDigitalZoom = mParameters.getMaxZoom();
+      mMaxAERegions = mParameters.getMaxNumMeteringAreas();
+      mMaxAFRegions = mParameters.getMaxNumFocusAreas();
 
       int rotation = getActivity().getWindowManager().getDefaultDisplay().getRotation();
       int degrees = 0;
@@ -411,15 +439,7 @@ public class CameraFragment extends AbstractCameraFragment implements TextureVie
         mSensorOrientation = (info.orientation - degrees + 360) % 360;
       }
 
-      mParameters = mCamera.getParameters();
-
-      if(mPreviewSize.height > mPreviewSize.width) {
-        mParameters.setPictureSize(mPreviewSize.height, mPreviewSize.width);
-      }else{
-        mParameters.setPictureSize(mPreviewSize.width, mPreviewSize.height);
-      }
-
-      mSupportedFlashModes = parameters.getSupportedFlashModes();
+      mSupportedFlashModes = mParameters.getSupportedFlashModes();
       mFlashSupported = mSupportedFlashModes != null && mSupportedFlashModes.size() > 0;
       if(mFlashSupported) {
         mSupportedFlashModes.remove("torch");
@@ -428,6 +448,100 @@ public class CameraFragment extends AbstractCameraFragment implements TextureVie
 
     public boolean isDigitalZoomEnabled() {
       return mMaxDigitalZoom > 0;
+    }
+  }
+
+  /*
+    Video methods
+   */
+  @Override
+  protected void startCaptureVideo() {
+    super.startCaptureVideo();
+    startRecording();
+  }
+
+  @Override
+  protected void stopCaptureVideo() {
+    super.stopCaptureVideo();
+    stopRecording();
+  }
+
+  private boolean prepareVideoRecorder(){
+    mMediaRecorder = new MediaRecorder();
+    mCamera.unlock();
+    mMediaRecorder.setCamera(mCamera);
+    mMediaRecorder.setAudioSource(MediaRecorder.AudioSource.CAMCORDER);
+    mMediaRecorder.setVideoSource(MediaRecorder.VideoSource.CAMERA);
+    mMediaRecorder.setMaxDuration(VIDEO_MAX_DURATION);
+    mMediaRecorder.setMaxFileSize(VIDE_MAX_FILE_SIZE);
+    mMediaRecorder.setOnInfoListener(this);
+
+    if(mChosenCamera == Camera.CameraInfo.CAMERA_FACING_BACK) {
+      mMediaRecorder.setOrientationHint(mCameraInfo.mSensorOrientation);
+    }else{
+      if(mCameraInfo.mSensorOrientation != 0){
+        mMediaRecorder.setOrientationHint(360-mCameraInfo.mSensorOrientation);
+      }
+    }
+
+    //Check it
+    CamcorderProfile profile = CamcorderProfile.get(CamcorderProfile.QUALITY_480P);
+    Log.i(TAG, "audioBitRate: " + profile.audioBitRate + "\n" +
+        "audioChannels: " + profile.audioChannels + "\n" +
+        "audioCodec: " + profile.audioCodec + "\n" +
+        "audioSampleRate: " + profile.audioSampleRate + "\n" +
+        "duration: " + profile.duration + "\n" +
+        "fileFormat: " + profile.fileFormat + "\n" +
+        "quality: " + profile.quality + "\n" +
+        "videoBitRate: " + profile.videoBitRate + "\n" +
+        "videoCodec: " + profile.videoCodec + "\n" +
+        "videoFrameHeight: " + profile.videoFrameHeight + "\n" +
+        "videoFrameWidth: " + profile.videoFrameWidth + "\n" +
+        "videoFrameRate: " + profile.videoFrameRate + "\n"
+    );
+    mMediaRecorder.setProfile(profile);
+
+    File file = createFile(FILE_MP4);
+    mMediaRecorder.setOutputFile(file.getPath());
+
+    try {
+      mMediaRecorder.prepare();
+    } catch (IllegalStateException e) {
+      Log.d(TAG, "IllegalStateException preparing MediaRecorder: " + e.getMessage());
+      releaseMediaRecorder();
+      return false;
+    } catch (IOException e) {
+      Log.d(TAG, "IOException preparing MediaRecorder: " + e.getMessage());
+      releaseMediaRecorder();
+      return false;
+    }
+    return true;
+  }
+
+  private void releaseMediaRecorder(){
+    if (mMediaRecorder != null) {
+      mMediaRecorder.reset();   // clear recorder configuration
+      mMediaRecorder.release(); // release the recorder object
+      mMediaRecorder = null;
+      mCamera.lock();           // lock camera for later use
+    }
+  }
+
+  private synchronized void startRecording(){
+    if (prepareVideoRecorder()) {
+      mIsRecording = true;
+      mMediaRecorder.start();
+    }else{
+      releaseCamera();
+    }
+  }
+
+  private synchronized void stopRecording(){
+    if(mMediaRecorder != null && mIsRecording) {
+      mMediaRecorder.stop();
+      releaseMediaRecorder();
+      mCamera.lock();
+      mIsRecording = false;
     }
   }
 }

@@ -6,12 +6,19 @@ import android.location.Criteria;
 import android.location.Location;
 import android.location.LocationManager;
 import android.media.MediaActionSound;
+import android.media.MediaRecorder;
 import android.os.Bundle;
+import android.os.CountDownTimer;
+import android.os.Handler;
 import android.support.annotation.Nullable;
+import android.util.Log;
 import android.view.LayoutInflater;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.widget.ImageButton;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.bnsantos.camera.R;
@@ -21,20 +28,27 @@ import com.bnsantos.camera.view.focusring.FocusRing;
 
 import java.util.List;
 
-import static android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON_ALWAYS_FLASH;
-import static android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON_AUTO_FLASH;
-import static android.hardware.camera2.CameraMetadata.FLASH_MODE_OFF;
+import static android.media.MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED;
+import static android.media.MediaRecorder.MEDIA_RECORDER_INFO_MAX_FILESIZE_REACHED;
 
-public abstract class AbstractCameraFragment extends Fragment implements View.OnClickListener {
+public abstract class AbstractCameraFragment extends Fragment implements View.OnClickListener, View.OnTouchListener, MediaRecorder.OnInfoListener {
+  private static final String TAG = AbstractCameraFragment.class.getSimpleName();
   private static final String BUNDLE_FLASH_MODE = "bundle_flash_mode";
   private static final String BUNDLE_LOCATION = "bundle_location";
   private static final String BUNDLE_SHOW_GRID = "bundle_show_grid";
   private static final String BUNDLE_ZOOM_LEVEL = "bundle_zoom_level";
   protected static final String BUNDLE_CHOSEN_CAMERA = "bundle_chosen_camera";
 
+  protected static final int FILE_JPEG = 1;
+  protected static final int FILE_MP4 = 2;
+
   protected static final int FLASH_AUTO = 1;
   protected static final int FLASH_ON = 2;
   protected static final int FLASH_OFF = 3;
+
+  protected static final int VIDE_MAX_FILE_SIZE = 1024*1024*10; //10Mb
+  protected static final int VIDEO_MAX_DURATION = 30000; // 30 seconds
+  protected static final int MILLIS = 1000; // 1 second
 
   protected int mFlashMode = FLASH_AUTO;
   protected boolean mLocationEnabled;
@@ -53,6 +67,18 @@ public abstract class AbstractCameraFragment extends Fragment implements View.On
 
   private LocationManager mLocationManager;
   private FocusRing mFocusRing;
+  private TextView mChronometer;
+  private CountDownTimer mCountDownTimer = new CountDownTimer(VIDEO_MAX_DURATION, MILLIS) {
+    @Override
+    public void onTick(long l) {
+      mChronometer.setText(getString(R.string.video_count_down, l/MILLIS));
+    }
+
+    @Override
+    public void onFinish() {
+      stopCaptureVideo();
+    }
+  };
 
   @Nullable
   @Override
@@ -76,7 +102,7 @@ public abstract class AbstractCameraFragment extends Fragment implements View.On
 
     mTexture = (AutoFitTextureView) view.findViewById(R.id.texture);
 
-    view.findViewById(R.id.action).setOnClickListener(this);
+    view.findViewById(R.id.action).setOnTouchListener(this);
     mChangeCamera = (ImageButton) view.findViewById(R.id.changeCamera);
     mChangeCamera.setOnClickListener(this);
     mFlash = (ImageButton) view.findViewById(R.id.flash);
@@ -89,6 +115,7 @@ public abstract class AbstractCameraFragment extends Fragment implements View.On
     mGridToggle.setOnClickListener(this);
     mTexture.setAreaChangedListener(mGridLines);
     mFocusRing = (FocusRing) view.findViewById(R.id.focusRing);
+    mChronometer = (TextView) view.findViewById(R.id.recordChronometer);
   }
 
   @Override
@@ -105,8 +132,6 @@ public abstract class AbstractCameraFragment extends Fragment implements View.On
     int id = v.getId();
     if (id == R.id.changeCamera) {
       changeCamera();
-    }else if(id == R.id.action){
-      takePicture();
     }else if(id == R.id.flash){
       changeFlashMode();
       updateFlashModeIcon();
@@ -122,6 +147,7 @@ public abstract class AbstractCameraFragment extends Fragment implements View.On
   protected abstract void changeCamera();
   protected abstract void takePicture();
   protected abstract void toggleLocation();
+
   private void toggleGridLines(){
     mShowGrid = !mShowGrid;
     setGridVisibility();
@@ -208,5 +234,67 @@ public abstract class AbstractCameraFragment extends Fragment implements View.On
         mFocusRing.setFocusLocation(x, y);
       }
     });
+  }
+
+  @Override
+  public boolean onTouch(View view, MotionEvent event) {
+    switch (event.getAction()) {
+      case MotionEvent.ACTION_UP:
+        mHandler.removeCallbacks(mVideoRunnable);
+        synchronized (this) {
+          if(mIsRecording){
+            stopCaptureVideo();
+          }else{
+            takePicture();
+          }
+        }
+        return true;
+      case MotionEvent.ACTION_DOWN:
+        mHandler.removeCallbacks(mVideoRunnable);
+        mHandler.postDelayed(mVideoRunnable, ViewConfiguration.getLongPressTimeout());
+        return true;
+    }
+    return false;
+  }
+
+
+  protected void startCaptureVideo(){
+    mChronometer.setVisibility(View.VISIBLE);
+    if(mCountDownTimer!=null) {
+      mCountDownTimer.cancel();
+      mCountDownTimer.start();
+    }
+  }
+
+  protected void stopCaptureVideo(){
+    mChronometer.setVisibility(View.GONE);
+
+    if(mCountDownTimer != null){
+      mCountDownTimer.cancel();
+    }
+  }
+
+  protected boolean mIsRecording;
+
+  private Handler mHandler = new Handler();
+  private Runnable mVideoRunnable = new Runnable() {
+    @Override
+    public void run() {
+      synchronized (AbstractCameraFragment.this){
+        mIsRecording = true;
+        startCaptureVideo();
+      }
+    }
+  };
+
+  @Override
+  public void onInfo(MediaRecorder mediaRecorder, int what, int extra) {
+    if (what == MEDIA_RECORDER_INFO_MAX_DURATION_REACHED) {
+      Log.i(TAG, "MEDIA_RECORDER_INFO_MAX_DURATION_REACHED");
+      stopCaptureVideo();
+    }else if (what == MEDIA_RECORDER_INFO_MAX_FILESIZE_REACHED){
+      Log.i(TAG, "MEDIA_RECORDER_INFO_MAX_FILESIZE_REACHED");
+      stopCaptureVideo();
+    }
   }
 }

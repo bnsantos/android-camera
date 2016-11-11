@@ -3,4 +3,5 @@
   <string name="ask_camera_permission">Camera permission required</string>
   <string name="ask_location_permission">Location permission required</string>
   <string name="ask_storage_permission">Storage permission required</string>
+  <string name="video_count_down">%ds</string>
 </resources>

@@ -35,6 +35,7 @@ import android.util.SparseIntArray;
 import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
+import android.widget.Toast;
 
 import com.bnsantos.camera.CameraActivity;
 import com.bnsantos.camera.ImageSaver;
@@ -596,6 +597,18 @@ public class Camera2Fragment extends AbstractCamera2PermissionsFragment implemen
       mLocationEnabled = false;
     }
     setLocationIcon();
+  }
+
+  @Override
+  protected void startCaptureVideo() {
+    super.startCaptureVideo();
+    Toast.makeText(getActivity(), "TODO START VIDEO", Toast.LENGTH_SHORT).show();
+  }
+
+  @Override
+  protected void stopCaptureVideo() {
+    super.stopCaptureVideo();
+    Toast.makeText(getActivity(), "TODO STOP VIDEO", Toast.LENGTH_SHORT).show();
   }
 
   @Override

@@ -23,7 +23,7 @@ public class CameraActivity extends Activity {
     if(savedInstanceState == null){
       if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
           getFragmentManager().beginTransaction()
-              .replace(R.id.container, CameraFragment.newInstance())
+              .replace(R.id.container, Camera2Fragment.newInstance())
               .commit();
       }else{getFragmentManager().beginTransaction()
           .replace(R.id.container, CameraFragment.newInstance())
