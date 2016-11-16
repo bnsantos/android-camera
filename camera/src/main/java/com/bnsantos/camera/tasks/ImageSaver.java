@@ -1,4 +1,4 @@
-package com.bnsantos.camera;
+package com.bnsantos.camera.tasks;
 
 
 import android.app.Activity;

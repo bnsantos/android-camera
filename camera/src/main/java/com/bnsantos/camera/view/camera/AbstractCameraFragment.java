@@ -9,6 +9,7 @@ import android.media.MediaActionSound;
 import android.media.MediaRecorder;
 import android.os.Bundle;
 import android.os.CountDownTimer;
+import android.os.Environment;
 import android.os.Handler;
 import android.support.annotation.Nullable;
 import android.util.Log;
@@ -26,21 +27,24 @@ import com.bnsantos.camera.view.AutoFitTextureView;
 import com.bnsantos.camera.view.GridLines;
 import com.bnsantos.camera.view.focusring.FocusRing;
 
+import java.io.File;
+import java.util.Date;
 import java.util.List;
 
+import static android.media.MediaRecorder.MEDIA_ERROR_SERVER_DIED;
+import static android.media.MediaRecorder.MEDIA_RECORDER_ERROR_UNKNOWN;
 import static android.media.MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED;
 import static android.media.MediaRecorder.MEDIA_RECORDER_INFO_MAX_FILESIZE_REACHED;
+import static com.bnsantos.camera.CameraActivity.DATE_FORMAT;
+import static com.bnsantos.camera.CameraActivity.FOLDER;
 
-public abstract class AbstractCameraFragment extends Fragment implements View.OnClickListener, View.OnTouchListener, MediaRecorder.OnInfoListener {
+public abstract class AbstractCameraFragment extends Fragment implements View.OnClickListener, View.OnTouchListener, MediaRecorder.OnInfoListener, MediaRecorder.OnErrorListener{
   private static final String TAG = AbstractCameraFragment.class.getSimpleName();
   private static final String BUNDLE_FLASH_MODE = "bundle_flash_mode";
   private static final String BUNDLE_LOCATION = "bundle_location";
   private static final String BUNDLE_SHOW_GRID = "bundle_show_grid";
   private static final String BUNDLE_ZOOM_LEVEL = "bundle_zoom_level";
   protected static final String BUNDLE_CHOSEN_CAMERA = "bundle_chosen_camera";
-
-  protected static final int FILE_JPEG = 1;
-  protected static final int FILE_MP4 = 2;
 
   protected static final int FLASH_AUTO = 1;
   protected static final int FLASH_ON = 2;
@@ -56,6 +60,9 @@ public abstract class AbstractCameraFragment extends Fragment implements View.On
 
   protected static final int ZOOM_LEVEL_START = 1;
 
+  protected static final int FILE_JPEG = 1;
+  protected static final int FILE_MP4 = 2;
+
   protected AutoFitTextureView mTexture;
   protected ImageButton mChangeCamera;
   private ImageButton mFlash;
@@ -64,6 +71,11 @@ public abstract class AbstractCameraFragment extends Fragment implements View.On
   protected GridLines mGridLines;
   private MediaActionSound mMediaActionSound;
   protected int mZoomLevel = ZOOM_LEVEL_START;
+
+  /**
+   * MediaRecorder
+   */
+  protected MediaRecorder mMediaRecorder;
 
   private LocationManager mLocationManager;
   private FocusRing mFocusRing;
@@ -297,4 +309,38 @@ public abstract class AbstractCameraFragment extends Fragment implements View.On
       stopCaptureVideo();
     }
   }
+
+  @Override
+  public void onError(MediaRecorder mediaRecorder, int what, int extra) {
+    if(what == MEDIA_RECORDER_ERROR_UNKNOWN){
+      Log.i(TAG, "MEDIA_RECORDER_ERROR_UNKNOWN");
+    }else if(what == MEDIA_ERROR_SERVER_DIED){
+      Log.i(TAG, "MEDIA_ERROR_SERVER_DIED");
+    }else{
+      Log.e(TAG, "MediaRecorder.onError: " + what + "," + extra);
+    }
+  }
+
+  protected File createFile(int type){
+     /*
+        Creating folder
+       */
+    File directory = Environment.getExternalStoragePublicDirectory(FOLDER);
+    if(!directory.exists()){
+      Log.i(TAG, "Creating folders: " + directory.mkdirs() );
+    }
+
+    String timeStamp = DATE_FORMAT.format(new Date());
+    if(type == FILE_JPEG) {
+      return new File(directory, "pic_" + timeStamp + ".jpg");
+    }else if(type == FILE_MP4){
+      return new File(directory, "vid_" + timeStamp + ".mp4");
+    }else{
+      return new File(directory, "file_" + timeStamp);
+    }
+  }
+
+  /*
+  Video Methods
+   */
 }

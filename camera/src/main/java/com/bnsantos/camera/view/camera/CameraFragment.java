@@ -15,7 +15,6 @@ import android.media.ExifInterface;
 import android.media.MediaRecorder;
 import android.net.Uri;
 import android.os.Bundle;
-import android.os.Environment;
 import android.util.Log;
 import android.view.Surface;
 import android.view.TextureView;
@@ -23,6 +22,8 @@ import android.view.View;
 
 import com.bnsantos.camera.CameraActivity;
 import com.bnsantos.camera.R;
+import com.bnsantos.camera.model.CameraInfo;
+import com.bnsantos.camera.model.MySize;
 import com.bnsantos.camera.view.AutoFitTextureView;
 
 import java.io.ByteArrayOutputStream;
@@ -31,22 +32,17 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
-
-import static android.R.attr.bitmap;
-import static com.bnsantos.camera.CameraActivity.DATE_FORMAT;
-import static com.bnsantos.camera.CameraActivity.FOLDER;
 
 @SuppressWarnings("deprecation")
 public class CameraFragment extends AbstractCameraFragment implements TextureView.SurfaceTextureListener, AutoFitTextureView.TouchEventInterface, CameraActivity.CameraKeyListener, Camera.AutoFocusCallback {
   private static final String TAG = CameraFragment.class.getSimpleName();
+
   private Camera mCamera;
   private CameraInfo mCameraInfo;
+  private Camera.Parameters mParameters;
 
   private int mChosenCamera = Camera.CameraInfo.CAMERA_FACING_BACK;
-  protected boolean mTextureReady;
-  private MediaRecorder mMediaRecorder;
 
   public static Bitmap toBitmap(byte[] data) {
     return BitmapFactory.decodeByteArray(data , 0, data.length);
@@ -56,25 +52,6 @@ public class CameraFragment extends AbstractCameraFragment implements TextureVie
     Matrix mat = new Matrix();
     mat.postRotate(angle);
     return Bitmap.createBitmap(in, 0, 0, in.getWidth(), in.getHeight(), mat, true);
-  }
-
-  protected File createFile(int type){
-     /*
-        Creating folder
-       */
-    File directory = Environment.getExternalStoragePublicDirectory(FOLDER);
-    if(!directory.exists()){
-      Log.i(TAG, "Creating folders: " + directory.mkdirs() );
-    }
-
-    String timeStamp = DATE_FORMAT.format(new Date());
-    if(type == FILE_JPEG) {
-      return new File(directory, "pic_" + timeStamp + ".jpg");
-    }else if(type == FILE_MP4){
-      return new File(directory, "vid_" + timeStamp + ".mp4");
-    }else{
-      return new File(directory, "file_" + timeStamp);
-    }
   }
 
   private Camera.PictureCallback mPictureCallback = new Camera.PictureCallback() {
@@ -88,9 +65,9 @@ public class CameraFragment extends AbstractCameraFragment implements TextureVie
        */
       Bitmap bitmap = toBitmap(data);
       if(mChosenCamera == Camera.CameraInfo.CAMERA_FACING_BACK) {
-        bitmap = rotate(bitmap, mCameraInfo.mSensorOrientation);
+        bitmap = rotate(bitmap, mCameraInfo.getSensorOrientation());
       }else{
-        bitmap = rotate(bitmap, -mCameraInfo.mSensorOrientation);
+        bitmap = rotate(bitmap, -mCameraInfo.getSensorOrientation());
       }
 
       ByteArrayOutputStream bos = new ByteArrayOutputStream();
@@ -172,7 +149,6 @@ public class CameraFragment extends AbstractCameraFragment implements TextureVie
         mChosenCamera = savedInstanceState.getInt(BUNDLE_CHOSEN_CAMERA);
       }
     }
-    mTextureReady = false;
     mTexture.setSurfaceTextureListener(this);
     mTexture.setTouchListener(this);
   }
@@ -188,20 +164,53 @@ public class CameraFragment extends AbstractCameraFragment implements TextureVie
       Camera.getCameraInfo(i, info);
       if(info.facing == mChosenCamera){
         mCamera = Camera.open(i);
-        mCameraInfo = new CameraInfo(i, info);
-        updateFlashButtonVisibility(mCameraInfo.mFlashSupported);
+
+        mParameters = mCamera.getParameters();
+
+        List<String> supportedFlashModes = mParameters.getSupportedFlashModes();
+
+        int rotation = getActivity().getWindowManager().getDefaultDisplay().getRotation();
+        int degrees = 0;
+        switch (rotation) {
+          case Surface.ROTATION_0: degrees = 0; break;
+          case Surface.ROTATION_90: degrees = 90; break;
+          case Surface.ROTATION_180: degrees = 180; break;
+          case Surface.ROTATION_270: degrees = -90; break;
+        }
+        int sensorOrientation;
+        if (info.facing == Camera.CameraInfo.CAMERA_FACING_FRONT) {
+          sensorOrientation = (info.orientation + degrees) % 360;
+          sensorOrientation = (360 - sensorOrientation) % 360;  // compensate the mirror
+        } else {  // back-facing
+          sensorOrientation = (info.orientation - degrees + 360) % 360;
+        }
+
+        Camera.Size previewSize = mParameters.getPreviewSize();
+
+        mCameraInfo = new CameraInfo(
+            Integer.toString(i),
+            supportedFlashModes != null && supportedFlashModes.size() > 0,
+            mParameters.getMaxNumMeteringAreas(),
+            mParameters.getMaxNumFocusAreas(),
+            sensorOrientation,
+            new MySize(previewSize.width, previewSize.height),
+            new MySize(previewSize.width, previewSize.height),//TODO
+            new MySize(previewSize.width, previewSize.height),//TODO
+            mParameters.getMaxZoom(),
+            null);
+        updateFlashButtonVisibility(mCameraInfo.hasFlash());
         try {
           int orientation = getResources().getConfiguration().orientation;
           if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
-            mTexture.setAspectRatio(mCameraInfo.mPreviewSize.width, mCameraInfo.mPreviewSize.height);
+            mTexture.setAspectRatio(mCameraInfo.getPreviewSize().getWidth(), mCameraInfo.getPreviewSize().getHeight());
           } else {
             //noinspection SuspiciousNameCombination
-            mTexture.setAspectRatio(mCameraInfo.mPreviewSize.height, mCameraInfo.mPreviewSize.width);
+            mTexture.setAspectRatio(mCameraInfo.getPreviewSize().getHeight(), mCameraInfo.getPreviewSize().getWidth());
           }
           mCamera.setPreviewTexture(mTexture.getSurfaceTexture());
           mCamera.startPreview();
-          mCamera.setDisplayOrientation(mCameraInfo.mSensorOrientation);
-          mCamera.setParameters(mCameraInfo.mParameters);
+          mCamera.setDisplayOrientation(mCameraInfo.getSensorOrientation());
+          mCamera.setParameters(mParameters);
         } catch (IOException e) {
           e.printStackTrace();
         }
@@ -232,24 +241,24 @@ public class CameraFragment extends AbstractCameraFragment implements TextureVie
 
   @Override
   protected void changeFlashMode() {
-    if(mCameraInfo.mFlashSupported) {
+    if(mCameraInfo.hasFlash()) {
       super.changeFlashMode();
       switch (mFlashMode) {
         case FLASH_ON:
-          mCameraInfo.mParameters.setFlashMode("on");
+          mParameters.setFlashMode("on");
           break;
         case FLASH_OFF:
-          mCameraInfo.mParameters.setFlashMode("off");
+          mParameters.setFlashMode("off");
           break;
         default:
-          mCameraInfo.mParameters.setFlashMode("auto");
+          mParameters.setFlashMode("auto");
       }
     }
   }
 
   @Override
   protected void takePicture() {
-    mCamera.setParameters(mCameraInfo.mParameters);
+    mCamera.setParameters(mParameters);
     mCamera.takePicture(mShutterCallback, null, mPictureCallback);
   }
 
@@ -262,8 +271,10 @@ public class CameraFragment extends AbstractCameraFragment implements TextureVie
   @Override
   public void onResume() {
     super.onResume();
-    if(mTextureReady){
+    if (mTexture.isAvailable()) {
       openCamera();
+    }else{
+      mTexture.setSurfaceTextureListener(this);
     }
   }
 
@@ -276,20 +287,19 @@ public class CameraFragment extends AbstractCameraFragment implements TextureVie
 
   @Override
   public void onSurfaceTextureAvailable(SurfaceTexture surfaceTexture, int i, int i1) {
-    mTextureReady = true;
     openCamera();
   }
 
   @Override
   public void onSurfaceTextureSizeChanged(SurfaceTexture surfaceTexture, int i, int i1) {
-      /*if(mPreviewSize.height > mPreviewSize.width) {
-        mParameters.setPictureSize(mPreviewSize.height, mPreviewSize.width);
+      /*if(getPreviewSize().getHeight() > getPreviewSize().getWidth()) {
+        mParameters.setPictureSize(getPreviewSize().getHeight(), getPreviewSize().getWidth());
       }else{
-        mParameters.setPictureSize(mPreviewSize.width, mPreviewSize.height);
+        mParameters.setPictureSize(getPreviewSize().getWidth(), getPreviewSize().getHeight());
       }*/
 
-    mCameraInfo.mParameters.setPreviewSize(mCameraInfo.mPreviewSize.width, mCameraInfo.mPreviewSize.height);
-    mCamera.setParameters(mCameraInfo.mParameters);
+    mParameters.setPreviewSize(mCameraInfo.getPreviewSize().getWidth(), mCameraInfo.getPreviewSize().getHeight());
+    mCamera.setParameters(mParameters);
     mCamera.startPreview();
   }
 
@@ -313,26 +323,20 @@ public class CameraFragment extends AbstractCameraFragment implements TextureVie
   @Override
   public void onZoom(float scaleFactor) {
     if(mCameraInfo.isDigitalZoomEnabled()){
-      if (scaleFactor > 1.0f) {
-        if (mZoomLevel < mCameraInfo.mMaxDigitalZoom)
-          mZoomLevel++;
-      } else {
-        if (mZoomLevel > 1)
-          mZoomLevel--;
-      }
-      mCameraInfo.mParameters.setZoom(mZoomLevel);
-      mCamera.setParameters(mCameraInfo.mParameters);
+      mCameraInfo.scaleZoom(scaleFactor);
+      mParameters.setZoom(mZoomLevel);
+      mCamera.setParameters(mParameters);
       mCamera.startPreview();
     }
   }
 
   @Override
   public void onFocus(float x, float y) {
-    if(mCameraInfo.mMaxAFRegions > 0) {
+    if(mCameraInfo.hasAFRegionsEnabled()) {
       mCamera.cancelAutoFocus();
-      mCameraInfo.mParameters.setFocusMode(Camera.Parameters.FOCUS_MODE_AUTO);
+      mParameters.setFocusMode(Camera.Parameters.FOCUS_MODE_AUTO);
       setAreas(x, y);
-      mCamera.setParameters(mCameraInfo.mParameters);
+      mCamera.setParameters(mParameters);
       mCamera.startPreview();
       mCamera.autoFocus(this);
       playFocusRingAnimation(x, y);
@@ -343,14 +347,14 @@ public class CameraFragment extends AbstractCameraFragment implements TextureVie
     List<Camera.Area> focusAreas = new ArrayList<>();
     Rect focusRect = calculateTapArea(x, y, 1f);
     focusAreas.add(new Camera.Area(focusRect, 1000));
-    mCameraInfo.mParameters.setFocusAreas(focusAreas);
+    mParameters.setFocusAreas(focusAreas);
 
 
-    if(mCameraInfo.mMaxAERegions != 0){
+    if(mCameraInfo.hasAERegionsEnabled()){
       List<Camera.Area> meteringAreas = new ArrayList<>();
       Rect meteringRect = calculateTapArea(x, y, 1.5f);
       meteringAreas.add(new Camera.Area(meteringRect, 1000));
-      mCameraInfo.mParameters.setMeteringAreas(meteringAreas);
+      mParameters.setMeteringAreas(meteringAreas);
     }
   }
 
@@ -368,7 +372,7 @@ public class CameraFragment extends AbstractCameraFragment implements TextureVie
     boolean mirror = (mChosenCamera == Camera.CameraInfo.CAMERA_FACING_FRONT);
     matrix.setScale(mirror ? -1 : 1, 1);
     // This is the value for android.hardware.Camera.setDisplayOrientation.
-    matrix.postRotate(mCameraInfo.mSensorOrientation);
+    matrix.postRotate(mCameraInfo.getSensorOrientation());
     // Camera driver coordinates range from (-1000, -1000) to (1000, 1000).
     // UI coordinates range from (0, 0) to (width, height).
     matrix.postScale(mTexture.getWidth() / 2000f, mTexture.getHeight() / 2000f);
@@ -400,57 +404,6 @@ public class CameraFragment extends AbstractCameraFragment implements TextureVie
     Log.i(TAG, "Auto focus: " +b);
   }
 
-  private class CameraInfo{
-    int mCameraId;
-    boolean mFlashSupported;
-    int mMaxAERegions;
-    int mMaxAFRegions;
-    int mMaxDigitalZoom;
-    int mSensorOrientation;
-
-    Camera.Size mPreviewSize;
-    Camera.Size mJPEGSize;
-
-    Camera.Parameters mParameters;
-    private final List<String> mSupportedFlashModes;
-
-    public CameraInfo(int cameraId, Camera.CameraInfo info) {
-      mCameraId = cameraId;
-      mParameters = mCamera.getParameters();
-
-      mPreviewSize = mParameters.getPreviewSize();
-      mMaxDigitalZoom = mParameters.getMaxZoom();
-      mMaxAERegions = mParameters.getMaxNumMeteringAreas();
-      mMaxAFRegions = mParameters.getMaxNumFocusAreas();
-
-      int rotation = getActivity().getWindowManager().getDefaultDisplay().getRotation();
-      int degrees = 0;
-      switch (rotation) {
-        case Surface.ROTATION_0: degrees = 0; break;
-        case Surface.ROTATION_90: degrees = 90; break;
-        case Surface.ROTATION_180: degrees = 180; break;
-        case Surface.ROTATION_270: degrees = -90; break;
-      }
-
-      if (info.facing == Camera.CameraInfo.CAMERA_FACING_FRONT) {
-        mSensorOrientation = (info.orientation + degrees) % 360;
-        mSensorOrientation = (360 - mSensorOrientation) % 360;  // compensate the mirror
-      } else {  // back-facing
-        mSensorOrientation = (info.orientation - degrees + 360) % 360;
-      }
-
-      mSupportedFlashModes = mParameters.getSupportedFlashModes();
-      mFlashSupported = mSupportedFlashModes != null && mSupportedFlashModes.size() > 0;
-      if(mFlashSupported) {
-        mSupportedFlashModes.remove("torch");
-      }
-    }
-
-    public boolean isDigitalZoomEnabled() {
-      return mMaxDigitalZoom > 0;
-    }
-  }
-
   /*
     Video methods
    */
@@ -472,15 +425,17 @@ public class CameraFragment extends AbstractCameraFragment implements TextureVie
     mMediaRecorder.setCamera(mCamera);
     mMediaRecorder.setAudioSource(MediaRecorder.AudioSource.CAMCORDER);
     mMediaRecorder.setVideoSource(MediaRecorder.VideoSource.CAMERA);
+    mMediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
     mMediaRecorder.setMaxDuration(VIDEO_MAX_DURATION);
     mMediaRecorder.setMaxFileSize(VIDE_MAX_FILE_SIZE);
+    mMediaRecorder.setOnErrorListener(this);
     mMediaRecorder.setOnInfoListener(this);
 
     if(mChosenCamera == Camera.CameraInfo.CAMERA_FACING_BACK) {
-      mMediaRecorder.setOrientationHint(mCameraInfo.mSensorOrientation);
+      mMediaRecorder.setOrientationHint(mCameraInfo.getSensorOrientation());
     }else{
-      if(mCameraInfo.mSensorOrientation != 0){
-        mMediaRecorder.setOrientationHint(360-mCameraInfo.mSensorOrientation);
+      if(mCameraInfo.getSensorOrientation() != 0){
+        mMediaRecorder.setOrientationHint(360-mCameraInfo.getSensorOrientation());
       }
     }
 
